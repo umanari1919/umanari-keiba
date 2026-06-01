@@ -2,13 +2,13 @@
 
 ## Project Purpose
 
-`umanari-keiba` is a horse-racing AI repository for the うまなり地蔵 workflow. The foundation should support a practical prediction pipeline that turns NAR racing inputs into validated outputs that can be consumed by API and frontend tooling.
+`umanari-keiba` is a horse-racing AI repository for the うまなり地蔵 workflow. The foundation should support a practical prediction pipeline that turns NAR and JRA racing inputs into validated outputs that can be consumed by API and frontend tooling.
 
 ## Current Priority
 
 Work in this priority order unless the user explicitly changes it:
 
-1. NAR Prediction
+1. NAR/JRA Prediction
 2. EV
 3. 激走馬
 4. Base44 JSON
@@ -54,7 +54,7 @@ When application code is added later, also run the repository's relevant test, l
 - Prefer simple, explicit code over clever abstractions.
 - Keep data contracts documented near the workflow or code that emits them.
 - Validate JSON and API contracts before wiring frontend assumptions.
-- Keep NAR prediction logic, EV calculations, 激走馬 selection, Base44 JSON export, and FastAPI integration separated until interfaces are stable.
+- Keep NAR/JRA prediction logic, EV calculations, 激走馬 selection, Base44 JSON export, and FastAPI integration separated until interfaces are stable.
 - Use local fixtures and deterministic checks where possible.
 - Never hide import failures with broad import-time `try`/`catch` or equivalent exception wrappers.
 

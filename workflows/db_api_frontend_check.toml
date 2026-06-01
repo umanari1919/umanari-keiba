@@ -3,8 +3,8 @@ goal = "Check database contracts, FastAPI `/docs`, and frontend-facing Base44 JS
 
 steps = [
   "Inspect existing database, API, and frontend files before making changes.",
-  "List the data fields required by NAR Prediction, EV, 激走馬, and Base44 JSON consumers.",
-  "Compare database schema or fixtures against API response models and frontend expectations.",
+  "List the data fields required by NAR/JRA Prediction, EV, 激走馬, and Base44 JSON consumers.",
+  "Compare NAR and JRA database schema or fixtures against API response models and frontend expectations.",
   "Start or inspect FastAPI locally and confirm `/docs` is reachable when the app exists.",
   "Validate sample API responses against the Base44 JSON contract.",
   "Document mismatches before proposing implementation work."
@@ -19,7 +19,7 @@ verification = [
 ]
 
 expected_outputs = [
-  "A DB/API/frontend contract checklist.",
+  "A DB/API/frontend contract checklist covering both NAR and JRA data paths.",
   "Confirmation that FastAPI `/docs` is reachable, or a documented reason it is not yet available.",
   "A list of schema, response, or frontend mismatches to fix in later application-code work."
 ]
