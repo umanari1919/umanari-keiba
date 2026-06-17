@@ -1,0 +1,24 @@
+name = "repair_and_verify"
+goal = "Repair small defects safely and verify the repository with the narrowest reliable checks."
+
+steps = [
+  "Inspect git status and relevant files before editing.",
+  "Identify the smallest reproducible defect or missing contract.",
+  "Back up risky files before destructive or broad edits.",
+  "Apply a minimal targeted fix without large rewrites.",
+  "Run focused verification first, then broader checks only when they are available and relevant.",
+  "Summarize changed files, verification results, and remaining risks."
+]
+
+verification = [
+  "git status --short",
+  "python -m compileall .",
+  "pytest -q",
+  "npm test -- --runInBand"
+]
+
+expected_outputs = [
+  "A minimal repair patch scoped to the reported issue.",
+  "Exact verification commands with pass, fail, or environment-warning status.",
+  "No unrelated application-code rewrites or formatting churn."
+]

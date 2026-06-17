@@ -1,0 +1,22 @@
+name = "nar_jra_to_base44"
+goal = "Convert NAR and JRA prediction outputs into validated Base44 JSON without changing application code."
+
+steps = [
+  "Inspect available NAR and JRA input files, prediction artifacts, and README notes before editing.",
+  "Define the minimum shared and source-specific fields needed for NAR/JRA Prediction, EV, and 激走馬 ranking.",
+  "Map NAR and JRA prediction fields into one Base44 JSON contract with stable keys, a race source field, and explicit null handling.",
+  "Validate that generated JSON can be parsed locally before it is handed to API or frontend work.",
+  "Record assumptions and unresolved data gaps for the next implementation step."
+]
+
+verification = [
+  "git status --short",
+  "find workflows -maxdepth 1 -type f -name '*.toml' -print | sort",
+  "python -m json.tool <path-to-generated-base44-json> >/dev/null"
+]
+
+expected_outputs = [
+  "A documented NAR/JRA-to-Base44 field mapping, including race source differences.",
+  "A locally parseable Base44 JSON artifact or fixture.",
+  "A short list of missing inputs, assumptions, and next implementation tasks."
+]
