@@ -9,10 +9,11 @@ $Root = if ($env:THE_JOCKEY_RESEARCH_ROOT) {
 $Director = Join-Path $Root 'research_director.py'
 $ProbabilityDirector = Join-Path $Root 'probability_director.py'
 $MetaDirector = Join-Path $Root 'meta_research_director.py'
+$FeatureDirector = Join-Path $Root 'feature_research_director.py'
 $Dashboard = Join-Path $Root 'dashboard_server.py'
 $Updater = Join-Path $Root 'lab_updater.py'
 
-foreach ($p in @($Director,$ProbabilityDirector,$MetaDirector,$Dashboard,$Updater)) {
+foreach ($p in @($Director,$ProbabilityDirector,$MetaDirector,$FeatureDirector,$Dashboard,$Updater)) {
     if (-not (Test-Path $p)) { throw "必要ファイルが見つかりません: $p" }
 }
 
@@ -26,6 +27,7 @@ Write-Host "Research Root : $Root"
 Write-Host 'Director      : autonomous'
 Write-Host 'Probability   : autonomous'
 Write-Host 'Meta Improve  : autonomous'
+Write-Host 'Feature Lab   : autonomous'
 Write-Host 'Self Update   : enabled'
 Write-Host 'Dashboard     : http://127.0.0.1:8791'
 Write-Host ''
@@ -46,6 +48,7 @@ function Start-WorkerIfMissing {
 Start-WorkerIfMissing 'research_director.py' $Director 'Research Director'
 Start-WorkerIfMissing 'probability_director.py' $ProbabilityDirector 'Probability Director'
 Start-WorkerIfMissing 'meta_research_director.py' $MetaDirector 'Meta Research Director'
+Start-WorkerIfMissing 'feature_research_director.py' $FeatureDirector 'Feature Research Director'
 Start-WorkerIfMissing 'lab_updater.py' $Updater 'Lab Updater'
 
 py $Dashboard

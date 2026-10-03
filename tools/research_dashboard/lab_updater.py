@@ -17,6 +17,7 @@ STATE = ROOT / "checkpoints" / "lab_updater_state.json"
 DIRECTOR_STATE = ROOT / "checkpoints" / "research_director_state.json"
 PROBABILITY_STATE = ROOT / "checkpoints" / "probability_director_state.json"
 META_STATE = ROOT / "checkpoints" / "meta_research_director_state.json"
+FEATURE_STATE = ROOT / "checkpoints" / "feature_research_director_state.json"
 LOG = ROOT / "logs" / "lab_updater.log"
 INTERVAL = int(os.environ.get("THE_JOCKEY_UPDATE_INTERVAL", "300"))
 
@@ -25,6 +26,7 @@ FILES = [
     "research_director.py",
     "probability_director.py",
     "meta_research_director.py",
+    "feature_research_director.py",
     "start-dashboard.ps1",
     "start-research-lab.ps1",
     "lab_updater.py",
@@ -52,7 +54,7 @@ def sha256(data: bytes) -> str:
 def fetch(name: str) -> bytes:
     req = urllib.request.Request(
         f"{BASE}/{name}?t={int(time.time())}",
-        headers={"User-Agent": "THE-JOCKEY-Research-Lab-Updater/1.3"},
+        headers={"User-Agent": "THE-JOCKEY-Research-Lab-Updater/1.4"},
     )
     with urllib.request.urlopen(req, timeout=30) as r:
         return r.read()
@@ -168,6 +170,7 @@ def run_once() -> dict:
         ("research_director.py", DIRECTOR_STATE),
         ("probability_director.py", PROBABILITY_STATE),
         ("meta_research_director.py", META_STATE),
+        ("feature_research_director.py", FEATURE_STATE),
     ]
     for script_name, state_path in restart_specs:
         if script_name in updated:
@@ -193,7 +196,7 @@ def run_once() -> dict:
 
 
 def main() -> None:
-    log("LAB UPDATER START v1.3")
+    log("LAB UPDATER START v1.4")
     while True:
         run_once()
         time.sleep(max(60, INTERVAL))
