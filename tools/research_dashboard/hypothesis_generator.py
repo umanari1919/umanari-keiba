@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-import json, math, os, time
+import hashlib, json, os, time
 from datetime import datetime
 from pathlib import Path
 
@@ -13,6 +13,7 @@ CHECK = ROOT/'checkpoints'
 LOG = ROOT/'logs'/'hypothesis_generator.log'
 LEDGER = REPORTS/'EXPERIMENT_ledger.csv'
 QUEUE = REPORTS/'HYPOTHESIS_queue.json'
+PLAN = REPORTS/'TEMPORAL_SPLIT_plan.json'
 STATE = CHECK/'hypothesis_generator_state.json'
 INTERVAL = int(os.environ.get('THE_JOCKEY_HYPOTHESIS_INTERVAL','60'))
 MIN_RESULTS = int(os.environ.get('THE_JOCKEY_HYPOTHESIS_MIN_RESULTS','12'))
@@ -20,6 +21,9 @@ MAX_QUEUE = int(os.environ.get('THE_JOCKEY_HYPOTHESIS_QUEUE','72'))
 for p in (REPORTS,CHECK,LOG.parent): p.mkdir(parents=True,exist_ok=True)
 
 def now(): return datetime.now().astimezone().isoformat()
+def readj(path,default=None):
+    try:return json.loads(path.read_text(encoding='utf-8-sig'))
+    except Exception:return default
 def writej(path,obj):
     t=path.with_suffix(path.suffix+'.tmp'); t.write_text(json.dumps(obj,ensure_ascii=False,indent=2),encoding='utf-8'); t.replace(path)
 def log(msg):
@@ -29,21 +33,25 @@ def write_state(status,detail='',extra=None):
     x={'pid':os.getpid(),'updated':now(),'status':status,'detail':detail}
     if extra:x.update(extra)
     writej(STATE,x)
-
-def safe_float(x,default=np.nan):
-    try:return float(x)
-    except:return default
+def split_id(plan):
+    parts=[]
+    for name in ['TRAIN','VALIDATION','SELECTION','TEST','OOS']:
+        s=(plan.get('splits') or {}).get(name,{})
+        parts.extend([name,str(s.get('start_date')),str(s.get('end_date'))])
+    return hashlib.sha256('|'.join(parts).encode()).hexdigest()[:16]
 
 def build_candidates(df:pd.DataFrame):
     if df.empty:return []
     good=df[df.status.isin(['PROMOTE','KEEP'])].copy()
     if len(good)<MIN_RESULTS:return []
-    good['select_2024_logloss']=pd.to_numeric(good['select_2024_logloss'],errors='coerce')
-    good=good.dropna(subset=['select_2024_logloss'])
+    metric='selection_logloss' if 'selection_logloss' in good.columns else 'select_2024_logloss'
+    if metric not in good.columns:return []
+    good[metric]=pd.to_numeric(good[metric],errors='coerce')
+    good=good.dropna(subset=[metric])
     if good.empty:return []
     out=[]
     for target,g in good.groupby('target'):
-        elite=g.nsmallest(min(8,len(g)),'select_2024_logloss')
+        elite=g.nsmallest(min(8,len(g)),metric)
         fsets=elite['feature_set'].value_counts().index.tolist()[:2] or ['FIELD']
         depths=sorted(set(pd.to_numeric(elite['depth'],errors='coerce').dropna().astype(int).tolist()))
         lrs=sorted(set(pd.to_numeric(elite['lr'],errors='coerce').dropna().astype(float).tolist()))
@@ -75,18 +83,25 @@ def build_candidates(df:pd.DataFrame):
     return uniq[:MAX_QUEUE]
 
 def run_once():
+    plan=readj(PLAN,{}) or {}
+    if not plan.get('splits') or plan.get('status')=='BLOCKED':
+        write_state('WAITING','Temporal split plan not ready'); return
+    sid=split_id(plan)
     if not LEDGER.exists():
-        write_state('WAITING','Experiment ledger not available'); return
+        write_state('WAITING','Experiment ledger not available',{'split_id':sid}); return
     try:df=pd.read_csv(LEDGER)
     except Exception as e:
         write_state('BLOCKED',repr(e)); return
+    if 'split_id' not in df.columns:
+        write_state('WAITING','No experiments for current temporal split',{'split_id':sid}); return
+    df=df[df['split_id'].astype(str)==sid].copy()
     if len(df)<MIN_RESULTS:
-        write_state('WAITING',f'Need {MIN_RESULTS} completed experiments',{'completed':int(len(df))}); return
+        write_state('WAITING',f'Need {MIN_RESULTS} completed experiments for current split',{'split_id':sid,'completed':int(len(df))}); return
     queue=build_candidates(df)
-    payload={'updated':now(),'generation':1,'source_rows':int(len(df)),'count':len(queue),'candidates':queue}
+    payload={'updated':now(),'generation':1,'split_id':sid,'source_rows':int(len(df)),'count':len(queue),'candidates':queue}
     writej(QUEUE,payload)
-    write_state('PASS','Adaptive hypothesis queue refreshed',{'source_rows':int(len(df)),'queue':len(queue)})
-    log(f'HYPOTHESIS QUEUE refreshed source_rows={len(df)} queue={len(queue)}')
+    write_state('PASS','Adaptive hypothesis queue refreshed',{'split_id':sid,'source_rows':int(len(df)),'queue':len(queue)})
+    log(f'HYPOTHESIS QUEUE refreshed split={sid} source_rows={len(df)} queue={len(queue)}')
 
 def main():
     log('HYPOTHESIS GENERATOR START')
