@@ -14,6 +14,10 @@ def log(s):
  with LOG.open('a',encoding='utf-8') as f:f.write(f'[{now()}] {s}\n')
 def ll(y,p):
  y=np.asarray(y,float);p=np.clip(np.asarray(p,float),1e-9,1-1e-9);return float(-np.mean(y*np.log(p)+(1-y)*np.log(1-p)))
+def cast_cats(part,feats):
+ cats=[c for c in feats if c in ['race_scope_cd','racecourse_cd','track_cd','sex_cd','jockey_cd','trainer_cd']]
+ for c in cats:
+  if c in part: part[c]=part[c].fillna('MISSING').astype(str)
 def run_once():
  src=DATA/'CORE-004_field_strength_v2.csv'; coredec=REPORTS/'CORE-005_decision.json'; domreg=REPORTS/'domain_model_registry.json'
  if not (src.exists() and coredec.exists() and domreg.exists()):writej(STATE,{'pid':os.getpid(),'updated':now(),'status':'WAITING'});return
@@ -21,29 +25,29 @@ def run_once():
  except Exception as e:writej(STATE,{'pid':os.getpid(),'updated':now(),'status':'BLOCKED','detail':repr(e)});return
  df=pd.read_csv(src,low_memory=False);df['race_date']=pd.to_datetime(df.race_date,errors='coerce');df['year']=df.race_date.dt.year
  core=readj(coredec,{}) or {}; dom=readj(domreg,{}) or {}; rows=[]; ensreg={}
- common_feats=[c for c in ['race_scope_cd','racecourse_cd','distance_m','track_cd','horse_age','sex_cd','carried_weight_kg','frame_no','horse_no','jockey_cd','trainer_cd','prior_start_count','days_since_last_run','prior_win_rate','prior_top2_rate','prior_top3_rate','prior_avg_finish_pct','prior_avg_time_diff','recent5_time_diff_mean','recent5_finish_pct_mean','horse_pre_ability_v1','field_strength_v2','field_strength_coverage','ability_vs_field','ability_percentile_in_race','last_field_strength','recent3_field_strength_mean','recent5_field_strength_mean','prior_avg_field_strength','field_strength_trend'] if c in df]
- cats=[c for c in common_feats if c in ['race_scope_cd','racecourse_cd','track_cd','sex_cd','jockey_cd','trainer_cd']]
- for c in cats:df[c]=df[c].fillna('MISSING').astype(str)
  for target in ['label_win','label_top2','label_top3']:
-  ch=(core.get('champion') or {}).get(target); 
+  ch=(core.get('champion') or {}).get(target)
   if not ch:continue
   common_path=CORE/'models'/'CORE-005'/f"{target}_{ch['variant']}.cbm"
   if not common_path.exists():continue
-  cm=CatBoostClassifier();cm.load_model(str(common_path))
+  cm=CatBoostClassifier();cm.load_model(str(common_path));cfeats=list(cm.feature_names_)
+  if any(c not in df.columns for c in cfeats):log(f'MISSING common features {target}');continue
   for scope,dname in [(1,'JRA'),(2,'NAR')]:
-   info=(dom.get(dname) or {}).get(target); 
+   info=(dom.get(dname) or {}).get(target)
    if not info or not Path(info['model']).exists():continue
-   dm=CatBoostClassifier();dm.load_model(info['model']); part=df[(df.race_scope_cd==scope)&(df.year.isin([2024,2025,2026]))&df[target].notna()].copy()
+   dm=CatBoostClassifier();dm.load_model(info['model']);dfeats=list(dm.feature_names_)
+   if any(c not in df.columns for c in dfeats):log(f'MISSING domain features {dname} {target}');continue
+   part=df[(df.race_scope_cd==scope)&(df.year.isin([2024,2025,2026]))&df[target].notna()].copy()
    if part.empty:continue
-   cp=cm.predict_proba(part[common_feats])[:,1]
-   dfeats=dm.feature_names_; dp=dm.predict_proba(part[dfeats])[:,1]
-   best={'w_domain':0.0,'val_logloss':1e9}
+   cast_cats(part,cfeats);cast_cats(part,dfeats)
+   cp=cm.predict_proba(part[cfeats])[:,1];dp=dm.predict_proba(part[dfeats])[:,1]
    val=part.year==2024
    if val.sum()<100:continue
+   best={'w_domain':0.0,'val_logloss':1e9}
    for w in np.linspace(0,1,11):
-    p=w*dp+(1-w)*cp; score=ll(part.loc[val,target],p[val])
+    p=w*dp+(1-w)*cp;score=ll(part.loc[val,target],p[val])
     if score<best['val_logloss']:best={'w_domain':float(w),'val_logloss':score}
-   p=best['w_domain']*dp+(1-best['w_domain'])*cp; mets={}
+   p=best['w_domain']*dp+(1-best['w_domain'])*cp;mets={}
    for yr,label in [(2025,'TEST_2025'),(2026,'OOS_2026')]:
     m=part.year==yr
     if m.sum():mets[label]={'rows':int(m.sum()),'logloss':ll(part.loc[m,target],p[m]),'common_logloss':ll(part.loc[m,target],cp[m]),'domain_logloss':ll(part.loc[m,target],dp[m])}
