@@ -8,7 +8,7 @@ $Root = if ($env:THE_JOCKEY_RESEARCH_ROOT) {
 
 New-Item -ItemType Directory -Force -Path $Root | Out-Null
 
-$Base = 'https://raw.githubusercontent.com/umanari1919/umanari-keiba/feat/autonomous-research-dashboard-001/tools/research_dashboard'
+$Base = 'https://raw.githubusercontent.com/umanari1919/umanari-keiba/main/tools/research_dashboard'
 
 $Files = @(
     @{ Name = 'dashboard_server.py'; Url = "$Base/dashboard_server.py" },
