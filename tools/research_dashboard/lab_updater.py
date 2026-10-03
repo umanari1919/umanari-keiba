@@ -3,9 +3,9 @@ import hashlib,json,os,signal,subprocess,sys,time,urllib.request
 from datetime import datetime
 from pathlib import Path
 ROOT=Path(os.environ.get('THE_JOCKEY_RESEARCH_ROOT',Path.home()/'Downloads'/'THE-JOCKEY-RESEARCH'));BASE='https://raw.githubusercontent.com/umanari1919/umanari-keiba/main/tools/research_dashboard';CHECK=ROOT/'checkpoints';STATE=CHECK/'lab_updater_state.json';LOG=ROOT/'logs'/'lab_updater.log';INTERVAL=int(os.environ.get('THE_JOCKEY_UPDATE_INTERVAL','300'))
-FILES=['dashboard_server.py','research_director.py','probability_director.py','meta_research_director.py','feature_research_director.py','experiment_director.py','hypothesis_generator.py','domain_research_director.py','ensemble_director.py','autonomy_supervisor.py','start-dashboard.ps1','start-research-lab.ps1','lab_updater.py']
+FILES=['dashboard_server.py','research_director.py','temporal_sample_optimizer.py','universal_model_director.py','probability_director.py','meta_research_director.py','feature_research_director.py','experiment_director.py','hypothesis_generator.py','domain_research_director.py','ensemble_director.py','autonomy_supervisor.py','start-dashboard.ps1','start-research-lab.ps1','lab_updater.py']
 STATES={
-'research_director.py':'research_director_state.json','probability_director.py':'probability_director_state.json','meta_research_director.py':'meta_research_director_state.json','feature_research_director.py':'feature_research_director_state.json','experiment_director.py':'experiment_director_state.json','hypothesis_generator.py':'hypothesis_generator_state.json','domain_research_director.py':'domain_research_director_state.json','ensemble_director.py':'ensemble_director_state.json','autonomy_supervisor.py':'autonomy_supervisor_state.json'}
+'research_director.py':'research_director_state.json','temporal_sample_optimizer.py':'temporal_sample_optimizer_state.json','universal_model_director.py':'universal_model_director_state.json','probability_director.py':'probability_director_state.json','meta_research_director.py':'meta_research_director_state.json','feature_research_director.py':'feature_research_director_state.json','experiment_director.py':'experiment_director_state.json','hypothesis_generator.py':'hypothesis_generator_state.json','domain_research_director.py':'domain_research_director_state.json','ensemble_director.py':'ensemble_director_state.json','autonomy_supervisor.py':'autonomy_supervisor_state.json'}
 for p in (CHECK,LOG.parent):p.mkdir(parents=True,exist_ok=True)
 def now():return datetime.now().astimezone().isoformat()
 def log(s):
@@ -18,7 +18,7 @@ def alive(pid):
  try:os.kill(int(pid),0);return True
  except:return False
 def fetch(name):
- req=urllib.request.Request(f'{BASE}/{name}?t={time.time_ns()}',headers={'User-Agent':'THE-JOCKEY-Lab-Updater/2.2'})
+ req=urllib.request.Request(f'{BASE}/{name}?t={time.time_ns()}',headers={'User-Agent':'THE-JOCKEY-Lab-Updater/2.3'})
  with urllib.request.urlopen(req,timeout=30) as r:return r.read()
 def sha(b):return hashlib.sha256(b).hexdigest()
 def replace(path,data):
@@ -50,7 +50,7 @@ def run_once():
    except Exception as e:errors.append({'file':name,'error':f'start/restart {e!r}'})
  out={'updated_at':now(),'updated_files':updated,'workers':workers,'errors':errors,'status':'PASS' if not errors else 'PARTIAL','interval_seconds':INTERVAL};STATE.write_text(json.dumps(out,ensure_ascii=False,indent=2),encoding='utf-8');return out
 def main():
- log('LAB UPDATER START v2.2')
+ log('LAB UPDATER START v2.3')
  while True:
   run_once();time.sleep(max(60,INTERVAL))
 if __name__=='__main__':main()
