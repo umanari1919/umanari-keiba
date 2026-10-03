@@ -3,6 +3,8 @@ $Root = if ($env:THE_JOCKEY_RESEARCH_ROOT) { $env:THE_JOCKEY_RESEARCH_ROOT } els
 $env:THE_JOCKEY_RESEARCH_ROOT = $Root
 $Workers = @(
     @{File='research_director.py'; Label='Research Director'},
+    @{File='temporal_sample_optimizer.py'; Label='Temporal Optimizer'},
+    @{File='universal_model_director.py'; Label='Universal Model Director'},
     @{File='probability_director.py'; Label='Probability Director'},
     @{File='meta_research_director.py'; Label='Meta Research Director'},
     @{File='feature_research_director.py'; Label='Feature Research Director'},
@@ -21,22 +23,22 @@ Write-Host '============================================================'
 Write-Host ' THE JOCKEY 完全自律研究所'
 Write-Host '============================================================'
 Write-Host "Research Root : $Root"
-Write-Host 'Research      : autonomous'
-Write-Host 'Experiments   : TURBO continuous'
-Write-Host 'Hypotheses    : self-generating'
-Write-Host 'Probability   : autonomous'
-Write-Host 'Meta Improve  : autonomous'
-Write-Host 'Feature Lab   : autonomous'
-Write-Host 'JRA/NAR       : autonomous'
-Write-Host 'Ensemble      : autonomous'
-Write-Host 'Quality/Drift : autonomous'
-Write-Host 'Recovery      : autonomous'
-Write-Host 'Self Update   : enabled'
-Write-Host 'Dashboard     : http://127.0.0.1:8791'
+Write-Host 'Population     : auto-audited'
+Write-Host 'Time Splits    : auto-optimized'
+Write-Host 'Research       : autonomous'
+Write-Host 'Experiments    : TURBO continuous'
+Write-Host 'Hypotheses     : self-generating'
+Write-Host 'Probability    : autonomous'
+Write-Host 'JRA/NAR        : autonomous'
+Write-Host 'Ensemble       : autonomous'
+Write-Host 'Quality/Drift  : autonomous'
+Write-Host 'Recovery       : autonomous'
+Write-Host 'Self Update    : enabled'
+Write-Host 'Dashboard      : http://127.0.0.1:8791'
 Write-Host ''
 foreach ($w in $Workers) {
     $existing = Get-CimInstance Win32_Process | Where-Object { $_.CommandLine -like "*$($w.File)*" -and $_.ProcessId -ne $PID }
-    if (-not $existing) { Start-Process -FilePath 'py' -ArgumentList @($w.Path) -WorkingDirectory $Root -WindowStyle Hidden; Write-Host ("{0,-26}: STARTED" -f $w.Label) }
-    else { Write-Host ("{0,-26}: ALREADY RUNNING" -f $w.Label) }
+    if (-not $existing) { Start-Process -FilePath 'py' -ArgumentList @($w.Path) -WorkingDirectory $Root -WindowStyle Hidden; Write-Host ("{0,-28}: STARTED" -f $w.Label) }
+    else { Write-Host ("{0,-28}: ALREADY RUNNING" -f $w.Label) }
 }
 py $Dashboard
