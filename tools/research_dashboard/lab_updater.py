@@ -1,206 +1,56 @@
 from __future__ import annotations
-
-import hashlib
-import json
-import os
-import signal
-import subprocess
-import sys
-import time
-import urllib.request
+import hashlib,json,os,signal,subprocess,sys,time,urllib.request
 from datetime import datetime
 from pathlib import Path
-
-ROOT = Path(os.environ.get("THE_JOCKEY_RESEARCH_ROOT", Path.home() / "Downloads" / "THE-JOCKEY-RESEARCH"))
-BASE = "https://raw.githubusercontent.com/umanari1919/umanari-keiba/main/tools/research_dashboard"
-STATE = ROOT / "checkpoints" / "lab_updater_state.json"
-DIRECTOR_STATE = ROOT / "checkpoints" / "research_director_state.json"
-PROBABILITY_STATE = ROOT / "checkpoints" / "probability_director_state.json"
-META_STATE = ROOT / "checkpoints" / "meta_research_director_state.json"
-FEATURE_STATE = ROOT / "checkpoints" / "feature_research_director_state.json"
-LOG = ROOT / "logs" / "lab_updater.log"
-INTERVAL = int(os.environ.get("THE_JOCKEY_UPDATE_INTERVAL", "300"))
-
-FILES = [
-    "dashboard_server.py",
-    "research_director.py",
-    "probability_director.py",
-    "meta_research_director.py",
-    "feature_research_director.py",
-    "start-dashboard.ps1",
-    "start-research-lab.ps1",
-    "lab_updater.py",
-]
-
-for p in (STATE.parent, LOG.parent):
-    p.mkdir(parents=True, exist_ok=True)
-
-
-def now() -> str:
-    return datetime.now().astimezone().isoformat()
-
-
-def log(msg: str) -> None:
-    line = f"[{now()}] {msg}"
-    print(line, flush=True)
-    with LOG.open("a", encoding="utf-8") as f:
-        f.write(line + "\n")
-
-
-def sha256(data: bytes) -> str:
-    return hashlib.sha256(data).hexdigest()
-
-
-def fetch(name: str) -> bytes:
-    req = urllib.request.Request(
-        f"{BASE}/{name}?t={int(time.time())}",
-        headers={"User-Agent": "THE-JOCKEY-Research-Lab-Updater/1.4"},
-    )
-    with urllib.request.urlopen(req, timeout=30) as r:
-        return r.read()
-
-
-def local_bytes(path: Path) -> bytes:
-    try:
-        return path.read_bytes()
-    except FileNotFoundError:
-        return b""
-
-
-def atomic_replace(path: Path, data: bytes) -> None:
-    tmp = path.with_suffix(path.suffix + ".update")
-    tmp.write_bytes(data)
-    tmp.replace(path)
-
-
-def read_json(path: Path, default=None):
-    try:
-        return json.loads(path.read_text(encoding="utf-8-sig"))
-    except Exception:
-        return default
-
-
-def process_alive(pid: int) -> bool:
-    if not pid or pid <= 0:
-        return False
-    try:
-        os.kill(pid, 0)
-        return True
-    except Exception:
-        return False
-
-
-def stop_process(pid: int) -> None:
-    if not process_alive(pid):
-        return
-    try:
-        os.kill(pid, signal.SIGTERM)
-        for _ in range(30):
-            time.sleep(0.2)
-            if not process_alive(pid):
-                return
-    except Exception:
-        pass
-    if os.name == "nt" and process_alive(pid):
-        subprocess.run(["taskkill", "/PID", str(pid), "/T", "/F"], capture_output=True, text=True)
-
-
-def start_worker(script_name: str) -> int:
-    script = ROOT / script_name
-    flags = 0
-    if os.name == "nt":
-        flags = getattr(subprocess, "CREATE_NO_WINDOW", 0) | getattr(subprocess, "DETACHED_PROCESS", 0)
-    proc = subprocess.Popen(
-        [sys.executable, str(script)],
-        cwd=str(ROOT),
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL,
-        creationflags=flags,
-        env={**os.environ, "THE_JOCKEY_RESEARCH_ROOT": str(ROOT)},
-    )
-    return proc.pid
-
-
-def restart_worker(script_name: str, state_path: Path) -> dict:
-    old = read_json(state_path, {}) or {}
-    old_pid = int(old.get("pid") or 0)
-    if old_pid and old_pid != os.getpid():
-        stop_process(old_pid)
-    new_pid = start_worker(script_name)
-    log(f"RESTARTED {script_name} old_pid={old_pid or '-'} new_pid={new_pid}")
-    return {"script": script_name, "old_pid": old_pid or None, "new_pid": new_pid}
-
-
-def ensure_worker(script_name: str, state_path: Path, restarts: list, errors: list) -> None:
-    if not (ROOT / script_name).exists():
-        return
-    state = read_json(state_path, {}) or {}
-    pid = int(state.get("pid") or 0)
-    if not process_alive(pid):
-        try:
-            new_pid = start_worker(script_name)
-            restarts.append({"script": script_name, "old_pid": None, "new_pid": new_pid})
-            log(f"STARTED {script_name} new_pid={new_pid}")
-        except Exception as e:
-            errors.append({"file": script_name, "error": f"start failed: {e!r}"})
-
-
-def run_once() -> dict:
-    updated = []
-    unchanged = []
-    errors = []
-    restarts = []
-
-    for name in FILES:
-        try:
-            remote = fetch(name)
-            target = ROOT / name
-            local = local_bytes(target)
-            if sha256(remote) == sha256(local):
-                unchanged.append(name)
-                continue
-            atomic_replace(target, remote)
-            updated.append(name)
-            log(f"UPDATED {name}")
-        except Exception as e:
-            errors.append({"file": name, "error": repr(e)})
-            log(f"ERROR {name}: {e!r}")
-
-    restart_specs = [
-        ("research_director.py", DIRECTOR_STATE),
-        ("probability_director.py", PROBABILITY_STATE),
-        ("meta_research_director.py", META_STATE),
-        ("feature_research_director.py", FEATURE_STATE),
-    ]
-    for script_name, state_path in restart_specs:
-        if script_name in updated:
-            try:
-                restarts.append(restart_worker(script_name, state_path))
-            except Exception as e:
-                errors.append({"file": script_name, "error": f"restart failed: {e!r}"})
-                log(f"ERROR restarting {script_name}: {e!r}")
-        else:
-            ensure_worker(script_name, state_path, restarts, errors)
-
-    state = {
-        "updated_at": now(),
-        "updated_files": updated,
-        "unchanged_files": unchanged,
-        "restarts": restarts,
-        "errors": errors,
-        "interval_seconds": INTERVAL,
-        "status": "PASS" if not errors else "PARTIAL",
-    }
-    STATE.write_text(json.dumps(state, ensure_ascii=False, indent=2), encoding="utf-8")
-    return state
-
-
-def main() -> None:
-    log("LAB UPDATER START v1.4")
-    while True:
-        run_once()
-        time.sleep(max(60, INTERVAL))
-
-
-if __name__ == "__main__":
-    main()
+ROOT=Path(os.environ.get('THE_JOCKEY_RESEARCH_ROOT',Path.home()/'Downloads'/'THE-JOCKEY-RESEARCH'));BASE='https://raw.githubusercontent.com/umanari1919/umanari-keiba/main/tools/research_dashboard';CHECK=ROOT/'checkpoints';STATE=CHECK/'lab_updater_state.json';LOG=ROOT/'logs'/'lab_updater.log';INTERVAL=int(os.environ.get('THE_JOCKEY_UPDATE_INTERVAL','300'))
+FILES=['dashboard_server.py','research_director.py','probability_director.py','meta_research_director.py','feature_research_director.py','domain_research_director.py','ensemble_director.py','autonomy_supervisor.py','start-dashboard.ps1','start-research-lab.ps1','lab_updater.py']
+STATES={
+'research_director.py':'research_director_state.json','probability_director.py':'probability_director_state.json','meta_research_director.py':'meta_research_director_state.json','feature_research_director.py':'feature_research_director_state.json','domain_research_director.py':'domain_research_director_state.json','ensemble_director.py':'ensemble_director_state.json','autonomy_supervisor.py':'autonomy_supervisor_state.json'}
+for p in (CHECK,LOG.parent):p.mkdir(parents=True,exist_ok=True)
+def now():return datetime.now().astimezone().isoformat()
+def log(s):
+ line=f'[{now()}] {s}';print(line,flush=True)
+ with LOG.open('a',encoding='utf-8') as f:f.write(line+'\n')
+def readj(p,d=None):
+ try:return json.loads(p.read_text(encoding='utf-8-sig'))
+ except:return d
+def alive(pid):
+ try:os.kill(int(pid),0);return True
+ except:return False
+def fetch(name):
+ req=urllib.request.Request(f'{BASE}/{name}?t={time.time_ns()}',headers={'User-Agent':'THE-JOCKEY-Lab-Updater/2.0'})
+ with urllib.request.urlopen(req,timeout=30) as r:return r.read()
+def sha(b):return hashlib.sha256(b).hexdigest()
+def replace(path,data):
+ t=path.with_suffix(path.suffix+'.update');t.write_bytes(data);t.replace(path)
+def stop(pid):
+ if not alive(pid):return
+ try:os.kill(int(pid),signal.SIGTERM);time.sleep(.5)
+ except:pass
+ if os.name=='nt' and alive(pid):subprocess.run(['taskkill','/PID',str(pid),'/T','/F'],capture_output=True)
+def start(name):
+ flags=(getattr(subprocess,'CREATE_NO_WINDOW',0)|getattr(subprocess,'DETACHED_PROCESS',0)) if os.name=='nt' else 0
+ return subprocess.Popen([sys.executable,str(ROOT/name)],cwd=str(ROOT),stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL,creationflags=flags,env={**os.environ,'THE_JOCKEY_RESEARCH_ROOT':str(ROOT)}).pid
+def ensure(name,statefile,force=False):
+ st=readj(CHECK/statefile,{}) or {};pid=int(st.get('pid') or 0)
+ if force and pid:stop(pid);pid=0
+ if not alive(pid):pid=start(name);log(f'START {name} pid={pid}')
+ return pid
+def run_once():
+ updated=[];errors=[]
+ for name in FILES:
+  try:
+   remote=fetch(name);path=ROOT/name;local=path.read_bytes() if path.exists() else b''
+   if sha(remote)!=sha(local):replace(path,remote);updated.append(name);log(f'UPDATED {name}')
+  except Exception as e:errors.append({'file':name,'error':repr(e)});log(f'ERROR {name}: {e!r}')
+ workers={}
+ for name,statefile in STATES.items():
+  if (ROOT/name).exists():
+   try:workers[name]=ensure(name,statefile,force=name in updated)
+   except Exception as e:errors.append({'file':name,'error':f'start/restart {e!r}'})
+ out={'updated_at':now(),'updated_files':updated,'workers':workers,'errors':errors,'status':'PASS' if not errors else 'PARTIAL','interval_seconds':INTERVAL};STATE.write_text(json.dumps(out,ensure_ascii=False,indent=2),encoding='utf-8');return out
+def main():
+ log('LAB UPDATER START v2.0')
+ while True:
+  run_once();time.sleep(max(60,INTERVAL))
+if __name__=='__main__':main()
