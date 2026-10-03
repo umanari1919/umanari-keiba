@@ -14,6 +14,7 @@ $Files = @(
     @{ Name = 'dashboard_server.py'; Url = "$Base/dashboard_server.py" },
     @{ Name = 'start-dashboard.ps1'; Url = "$Base/start-dashboard.ps1" },
     @{ Name = 'research_director.py'; Url = "$Base/research_director.py" },
+    @{ Name = 'probability_director.py'; Url = "$Base/probability_director.py" },
     @{ Name = 'start-research-lab.ps1'; Url = "$Base/start-research-lab.ps1" },
     @{ Name = 'lab_updater.py'; Url = "$Base/lab_updater.py" }
 )
@@ -27,6 +28,7 @@ foreach ($f in $Files) {
 Write-Host ''
 Write-Host 'Autonomous Research Lab installed.'
 Write-Host 'Self Update: ENABLED'
+Write-Host 'Probability Pipeline: ENABLED'
 Write-Host "Start with: $Root\start-research-lab.ps1"
 Write-Host ''
 
