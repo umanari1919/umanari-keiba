@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-import hashlib, json, os, subprocess, sys, time
+import hashlib, json, os, subprocess, sys, time, urllib.request
 from datetime import datetime
 from pathlib import Path
 
@@ -9,6 +9,7 @@ CORE = ROOT/'CORE'; DATA = CORE/'data'; REPORTS = CORE/'reports'; CHECK = ROOT/'
 STATE = CHECK/'autonomy_supervisor_state.json'; LOG = LOGS/'autonomy_supervisor.log'; PROD = ROOT/'production'
 INTERVAL = int(os.environ.get('THE_JOCKEY_SUPERVISOR_INTERVAL','60')); MAX_RESTARTS = int(os.environ.get('THE_JOCKEY_MAX_RESTARTS','5'))
 WORKERS = {'research_director.py':'research_director_state.json','probability_director.py':'probability_director_state.json','meta_research_director.py':'meta_research_director_state.json','feature_research_director.py':'feature_research_director_state.json','experiment_director.py':'experiment_director_state.json','domain_research_director.py':'domain_research_director_state.json','ensemble_director.py':'ensemble_director_state.json'}
+BASE='https://raw.githubusercontent.com/umanari1919/umanari-keiba/main/tools/research_dashboard'
 for p in (CHECK,LOGS,PROD,REPORTS): p.mkdir(parents=True,exist_ok=True)
 def now(): return datetime.now().astimezone().isoformat()
 def readj(p,d=None):
@@ -25,6 +26,14 @@ def alive(pid):
 def start(script):
  flags=getattr(subprocess,'CREATE_NO_WINDOW',0)|getattr(subprocess,'DETACHED_PROCESS',0) if os.name=='nt' else 0
  return subprocess.Popen([sys.executable,str(ROOT/script)],cwd=str(ROOT),stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL,creationflags=flags,env={**os.environ,'THE_JOCKEY_RESEARCH_ROOT':str(ROOT)}).pid
+def bootstrap(script):
+ path=ROOT/script
+ if path.exists():return True
+ try:
+  req=urllib.request.Request(f'{BASE}/{script}?t={time.time_ns()}',headers={'User-Agent':'THE-JOCKEY-Autonomy-Supervisor/1.1'})
+  with urllib.request.urlopen(req,timeout=30) as r:data=r.read()
+  tmp=path.with_suffix(path.suffix+'.bootstrap');tmp.write_bytes(data);tmp.replace(path);log(f'BOOTSTRAP {script}');return True
+ except Exception as e:log(f'BOOTSTRAP FAILED {script}: {e!r}');return False
 def signature(path):
  if not path.exists():return None
  st=path.stat();return hashlib.sha256(f'{st.st_size}:{int(st.st_mtime)}'.encode()).hexdigest()
@@ -49,15 +58,17 @@ def drift_audit():
     if 'brier' in m and b.brier.mean()>a.brier.mean()*1.08:alerts.append(f'{target}:brier_drift')
  out={'status':'ALERT' if alerts else 'PASS','alerts':alerts,'updated':now()};writej(REPORTS/'AUTONOMY_drift.json',out);return out
 def production_gate(q,d):
- coredec=REPORTS/'CORE-005_decision.json';cal=REPORTS/'CORE-010_calibration_metrics.csv';meta=REPORTS/'model_registry.json';missing=[str(p) for p in (coredec,cal) if not p.exists()]
- source='META_REGISTRY' if meta.exists() else 'CORE-005_CHAMPION';registry=readj(meta,{}) if meta.exists() else (readj(coredec,{}) or {}).get('champion',{})
+ coredec=REPORTS/'CORE-005_decision.json';cal=REPORTS/'CORE-010_calibration_metrics.csv';exp=REPORTS/'EXPERIMENT_registry.json';meta=REPORTS/'model_registry.json';missing=[str(p) for p in (coredec,cal) if not p.exists()]
+ if exp.exists():source='EXPERIMENT_REGISTRY';registry=readj(exp,{}) or {}
+ elif meta.exists():source='META_REGISTRY';registry=readj(meta,{}) or {}
+ else:source='CORE-005_CHAMPION';registry=(readj(coredec,{}) or {}).get('champion',{})
  ok=not missing and bool(registry) and q.get('status')=='PASS' and d.get('status')!='ALERT'
  manifest={'status':'READY' if ok else 'HOLD','missing':missing,'quality':q.get('status'),'drift':d.get('status'),'updated':now(),'auto_betting':False,'scope':'prediction-model-only','model_source':source,'registry':registry if ok else {}}
  writej(PROD/'production_manifest.json',manifest);return manifest
 def worker_health(mem):
  out={}
  for script,state_name in WORKERS.items():
-  if not (ROOT/script).exists():out[script]={'status':'NOT_INSTALLED'};continue
+  if not bootstrap(script):out[script]={'status':'NOT_INSTALLED'};continue
   st=readj(CHECK/state_name,{}) or {};pid=int(st.get('pid') or 0);restarts=int(mem.get(script,{}).get('restarts',0));status='RUNNING' if alive(pid) else 'DEAD'
   if status=='DEAD' and restarts<MAX_RESTARTS:
    try:pid=start(script);restarts+=1;status='RESTARTED';log(f'RESTART {script} pid={pid}')
@@ -67,7 +78,7 @@ def worker_health(mem):
 def run_once():
  prev=readj(STATE,{}) or {};workers=worker_health(prev.get('workers',{}));q=quality_audit();d=drift_audit();prod=production_gate(q,d);status='BLOCKED' if q.get('status')=='BLOCKED' else ('DEGRADED' if any(v.get('status') in ('FAILED','DEAD') for v in workers.values()) or d.get('status')=='ALERT' else 'PASS');state={'updated':now(),'status':status,'workers':workers,'data_quality':q,'drift':d,'production':prod};writej(STATE,state);return state
 def main():
- log('AUTONOMY SUPERVISOR START')
+ log('AUTONOMY SUPERVISOR START v1.1')
  while True:
   try:run_once()
   except Exception as e:log(f'ERROR {e!r}')
