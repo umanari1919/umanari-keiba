@@ -15,12 +15,14 @@ ROOT = Path(os.environ.get("THE_JOCKEY_RESEARCH_ROOT", Path.home() / "Downloads"
 BASE = "https://raw.githubusercontent.com/umanari1919/umanari-keiba/main/tools/research_dashboard"
 STATE = ROOT / "checkpoints" / "lab_updater_state.json"
 DIRECTOR_STATE = ROOT / "checkpoints" / "research_director_state.json"
+PROBABILITY_STATE = ROOT / "checkpoints" / "probability_director_state.json"
 LOG = ROOT / "logs" / "lab_updater.log"
 INTERVAL = int(os.environ.get("THE_JOCKEY_UPDATE_INTERVAL", "300"))
 
 FILES = [
     "dashboard_server.py",
     "research_director.py",
+    "probability_director.py",
     "start-dashboard.ps1",
     "start-research-lab.ps1",
     "lab_updater.py",
@@ -48,7 +50,7 @@ def sha256(data: bytes) -> str:
 def fetch(name: str) -> bytes:
     req = urllib.request.Request(
         f"{BASE}/{name}?t={int(time.time())}",
-        headers={"User-Agent": "THE-JOCKEY-Research-Lab-Updater/1.1"},
+        headers={"User-Agent": "THE-JOCKEY-Research-Lab-Updater/1.2"},
     )
     with urllib.request.urlopen(req, timeout=30) as r:
         return r.read()
@@ -99,8 +101,8 @@ def stop_process(pid: int) -> None:
         subprocess.run(["taskkill", "/PID", str(pid), "/T", "/F"], capture_output=True, text=True)
 
 
-def start_director() -> int:
-    script = ROOT / "research_director.py"
+def start_worker(script_name: str) -> int:
+    script = ROOT / script_name
     flags = 0
     if os.name == "nt":
         flags = getattr(subprocess, "CREATE_NO_WINDOW", 0) | getattr(subprocess, "DETACHED_PROCESS", 0)
@@ -115,21 +117,21 @@ def start_director() -> int:
     return proc.pid
 
 
-def restart_director() -> dict:
-    old = read_json(DIRECTOR_STATE, {}) or {}
+def restart_worker(script_name: str, state_path: Path) -> dict:
+    old = read_json(state_path, {}) or {}
     old_pid = int(old.get("pid") or 0)
     if old_pid and old_pid != os.getpid():
         stop_process(old_pid)
-    new_pid = start_director()
-    log(f"RESTARTED research_director.py old_pid={old_pid or '-'} new_pid={new_pid}")
-    return {"old_pid": old_pid or None, "new_pid": new_pid}
+    new_pid = start_worker(script_name)
+    log(f"RESTARTED {script_name} old_pid={old_pid or '-'} new_pid={new_pid}")
+    return {"script": script_name, "old_pid": old_pid or None, "new_pid": new_pid}
 
 
 def run_once() -> dict:
     updated = []
     unchanged = []
     errors = []
-    restart = None
+    restarts = []
 
     for name in FILES:
         try:
@@ -146,18 +148,35 @@ def run_once() -> dict:
             errors.append({"file": name, "error": repr(e)})
             log(f"ERROR {name}: {e!r}")
 
-    if "research_director.py" in updated:
-        try:
-            restart = restart_director()
-        except Exception as e:
-            errors.append({"file": "research_director.py", "error": f"restart failed: {e!r}"})
-            log(f"ERROR restarting research_director.py: {e!r}")
+    restart_specs = [
+        ("research_director.py", DIRECTOR_STATE),
+        ("probability_director.py", PROBABILITY_STATE),
+    ]
+    for script_name, state_path in restart_specs:
+        if script_name in updated:
+            try:
+                restarts.append(restart_worker(script_name, state_path))
+            except Exception as e:
+                errors.append({"file": script_name, "error": f"restart failed: {e!r}"})
+                log(f"ERROR restarting {script_name}: {e!r}")
+
+    # First appearance of the probability worker must start automatically.
+    if "probability_director.py" not in updated and (ROOT / "probability_director.py").exists():
+        pstate = read_json(PROBABILITY_STATE, {}) or {}
+        ppid = int(pstate.get("pid") or 0)
+        if not process_alive(ppid):
+            try:
+                new_pid = start_worker("probability_director.py")
+                restarts.append({"script": "probability_director.py", "old_pid": None, "new_pid": new_pid})
+                log(f"STARTED probability_director.py new_pid={new_pid}")
+            except Exception as e:
+                errors.append({"file": "probability_director.py", "error": f"start failed: {e!r}"})
 
     state = {
         "updated_at": now(),
         "updated_files": updated,
         "unchanged_files": unchanged,
-        "restart": restart,
+        "restarts": restarts,
         "errors": errors,
         "interval_seconds": INTERVAL,
         "status": "PASS" if not errors else "PARTIAL",
@@ -167,7 +186,7 @@ def run_once() -> dict:
 
 
 def main() -> None:
-    log("LAB UPDATER START v1.1")
+    log("LAB UPDATER START v1.2")
     while True:
         run_once()
         time.sleep(max(60, INTERVAL))
