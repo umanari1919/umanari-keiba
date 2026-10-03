@@ -1,39 +1,20 @@
 $ErrorActionPreference = 'Stop'
-
-$Root = if ($env:THE_JOCKEY_RESEARCH_ROOT) {
-    $env:THE_JOCKEY_RESEARCH_ROOT
-} else {
-    Join-Path $HOME 'Downloads\THE-JOCKEY-RESEARCH'
-}
-
+$Root = if ($env:THE_JOCKEY_RESEARCH_ROOT) { $env:THE_JOCKEY_RESEARCH_ROOT } else { Join-Path $HOME 'Downloads\THE-JOCKEY-RESEARCH' }
 New-Item -ItemType Directory -Force -Path $Root | Out-Null
 $Base = 'https://raw.githubusercontent.com/umanari1919/umanari-keiba/main/tools/research_dashboard'
-
-$Files = @(
-    @{ Name = 'dashboard_server.py'; Url = "$Base/dashboard_server.py" },
-    @{ Name = 'start-dashboard.ps1'; Url = "$Base/start-dashboard.ps1" },
-    @{ Name = 'research_director.py'; Url = "$Base/research_director.py" },
-    @{ Name = 'probability_director.py'; Url = "$Base/probability_director.py" },
-    @{ Name = 'meta_research_director.py'; Url = "$Base/meta_research_director.py" },
-    @{ Name = 'feature_research_director.py'; Url = "$Base/feature_research_director.py" },
-    @{ Name = 'start-research-lab.ps1'; Url = "$Base/start-research-lab.ps1" },
-    @{ Name = 'lab_updater.py'; Url = "$Base/lab_updater.py" }
-)
-
-foreach ($f in $Files) {
-    $Out = Join-Path $Root $f.Name
-    Invoke-WebRequest -Uri ($f.Url + "?nocache=" + [guid]::NewGuid()) -OutFile $Out -UseBasicParsing
-    Write-Host "Installed: $Out"
-}
-
+$Names = @('dashboard_server.py','start-dashboard.ps1','research_director.py','probability_director.py','meta_research_director.py','feature_research_director.py','domain_research_director.py','ensemble_director.py','autonomy_supervisor.py','start-research-lab.ps1','lab_updater.py')
+foreach ($Name in $Names) { $Out=Join-Path $Root $Name; Invoke-WebRequest -Uri ("$Base/$Name?nocache="+[guid]::NewGuid()) -OutFile $Out -UseBasicParsing; Write-Host "Installed: $Out" }
 Write-Host ''
-Write-Host 'Autonomous Research Lab installed.'
-Write-Host 'Self Update: ENABLED'
-Write-Host 'Probability Pipeline: ENABLED'
-Write-Host 'Meta Improvement: ENABLED'
-Write-Host 'Feature Research: ENABLED'
+Write-Host 'THE JOCKEY Complete Autonomous Research Lab installed.'
+Write-Host 'Self Update       : ENABLED'
+Write-Host 'Auto Recovery     : ENABLED'
+Write-Host 'Data Quality      : ENABLED'
+Write-Host 'Drift Detection   : ENABLED'
+Write-Host 'Feature Research  : ENABLED'
+Write-Host 'Meta Improvement  : ENABLED'
+Write-Host 'JRA/NAR Specialists: ENABLED'
+Write-Host 'Ensemble Research : ENABLED'
+Write-Host 'Production Gate   : ENABLED (prediction models only)'
 Write-Host "Start with: $Root\start-research-lab.ps1"
-Write-Host ''
-
 Set-Location $Root
 & .\start-research-lab.ps1
