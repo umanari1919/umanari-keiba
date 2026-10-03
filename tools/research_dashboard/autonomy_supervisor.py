@@ -1,17 +1,14 @@
 from __future__ import annotations
 
-import hashlib, json, os, subprocess, sys, time, urllib.request
+import hashlib,json,os,subprocess,sys,time,urllib.request
 from datetime import datetime
 from pathlib import Path
-
-ROOT = Path(os.environ.get('THE_JOCKEY_RESEARCH_ROOT', Path.home()/'Downloads'/'THE-JOCKEY-RESEARCH'))
-CORE = ROOT/'CORE'; DATA = CORE/'data'; REPORTS = CORE/'reports'; CHECK = ROOT/'checkpoints'; LOGS = ROOT/'logs'
-STATE = CHECK/'autonomy_supervisor_state.json'; LOG = LOGS/'autonomy_supervisor.log'; PROD = ROOT/'production'
-INTERVAL = int(os.environ.get('THE_JOCKEY_SUPERVISOR_INTERVAL','60')); MAX_RESTARTS = int(os.environ.get('THE_JOCKEY_MAX_RESTARTS','5'))
-WORKERS = {'research_director.py':'research_director_state.json','probability_director.py':'probability_director_state.json','meta_research_director.py':'meta_research_director_state.json','feature_research_director.py':'feature_research_director_state.json','experiment_director.py':'experiment_director_state.json','hypothesis_generator.py':'hypothesis_generator_state.json','domain_research_director.py':'domain_research_director_state.json','ensemble_director.py':'ensemble_director_state.json'}
-BASE='https://raw.githubusercontent.com/umanari1919/umanari-keiba/main/tools/research_dashboard'
-for p in (CHECK,LOGS,PROD,REPORTS): p.mkdir(parents=True,exist_ok=True)
-def now(): return datetime.now().astimezone().isoformat()
+ROOT=Path(os.environ.get('THE_JOCKEY_RESEARCH_ROOT',Path.home()/'Downloads'/'THE-JOCKEY-RESEARCH'));CORE=ROOT/'CORE';DATA=CORE/'data';REPORTS=CORE/'reports';CHECK=ROOT/'checkpoints';LOGS=ROOT/'logs'
+STATE=CHECK/'autonomy_supervisor_state.json';LOG=LOGS/'autonomy_supervisor.log';PROD=ROOT/'production';INTERVAL=int(os.environ.get('THE_JOCKEY_SUPERVISOR_INTERVAL','60'));MAX_RESTARTS=int(os.environ.get('THE_JOCKEY_MAX_RESTARTS','5'))
+WORKERS={'research_director.py':'research_director_state.json','temporal_sample_optimizer.py':'temporal_sample_optimizer_state.json','universal_model_director.py':'universal_model_director_state.json','probability_director.py':'probability_director_state.json','meta_research_director.py':'meta_research_director_state.json','feature_research_director.py':'feature_research_director_state.json','experiment_director.py':'experiment_director_state.json','hypothesis_generator.py':'hypothesis_generator_state.json','domain_research_director.py':'domain_research_director_state.json','ensemble_director.py':'ensemble_director_state.json'}
+BASE='https://raw.githubusercontent.com/umanari1919/umanari-keiba/main/tools/research_dashboard';PLAN=REPORTS/'TEMPORAL_SPLIT_plan.json'
+for p in (CHECK,LOGS,PROD,REPORTS):p.mkdir(parents=True,exist_ok=True)
+def now():return datetime.now().astimezone().isoformat()
 def readj(p,d=None):
  try:return json.loads(p.read_text(encoding='utf-8-sig'))
  except:return d
@@ -20,6 +17,11 @@ def writej(p,o):
 def log(s):
  line=f'[{now()}] {s}';print(line,flush=True)
  with LOG.open('a',encoding='utf-8') as f:f.write(line+'\n')
+def split_id(plan):
+ a=[]
+ for n in ['TRAIN','VALIDATION','SELECTION','TEST','OOS']:
+  s=(plan.get('splits') or {}).get(n,{});a += [n,str(s.get('start_date')),str(s.get('end_date'))]
+ return hashlib.sha256('|'.join(a).encode()).hexdigest()[:16]
 def alive(pid):
  try:os.kill(int(pid),0);return True
  except:return False
@@ -30,7 +32,7 @@ def bootstrap(script):
  path=ROOT/script
  if path.exists():return True
  try:
-  req=urllib.request.Request(f'{BASE}/{script}?t={time.time_ns()}',headers={'User-Agent':'THE-JOCKEY-Autonomy-Supervisor/1.2'})
+  req=urllib.request.Request(f'{BASE}/{script}?t={time.time_ns()}',headers={'User-Agent':'THE-JOCKEY-Autonomy-Supervisor/1.3'})
   with urllib.request.urlopen(req,timeout=30) as r:data=r.read()
   tmp=path.with_suffix(path.suffix+'.bootstrap');tmp.write_bytes(data);tmp.replace(path);log(f'BOOTSTRAP {script}');return True
  except Exception as e:log(f'BOOTSTRAP FAILED {script}: {e!r}');return False
@@ -52,18 +54,22 @@ def drift_audit():
  if 'split' in m.columns:
   groups=m.groupby('target') if 'target' in m.columns else [('ALL',m)]
   for target,g in groups:
-   a=g[g['split'].astype(str).str.contains('2025')];b=g[g['split'].astype(str).str.contains('2026')]
+   a=g[g['split'].astype(str).str.upper().eq('TEST')];b=g[g['split'].astype(str).str.upper().eq('OOS')]
    if len(a) and len(b):
     if 'logloss' in m and b.logloss.mean()>a.logloss.mean()*1.08:alerts.append(f'{target}:logloss_drift')
     if 'brier' in m and b.brier.mean()>a.brier.mean()*1.08:alerts.append(f'{target}:brier_drift')
  out={'status':'ALERT' if alerts else 'PASS','alerts':alerts,'updated':now()};writej(REPORTS/'AUTONOMY_drift.json',out);return out
 def production_gate(q,d):
- coredec=REPORTS/'CORE-005_decision.json';cal=REPORTS/'CORE-010_calibration_metrics.csv';exp=REPORTS/'EXPERIMENT_registry.json';meta=REPORTS/'model_registry.json';missing=[str(p) for p in (coredec,cal) if not p.exists()]
- if exp.exists():source='EXPERIMENT_REGISTRY';registry=readj(exp,{}) or {}
- elif meta.exists():source='META_REGISTRY';registry=readj(meta,{}) or {}
- else:source='CORE-005_CHAMPION';registry=(readj(coredec,{}) or {}).get('champion',{})
- ok=not missing and bool(registry) and q.get('status')=='PASS' and d.get('status')!='ALERT'
- manifest={'status':'READY' if ok else 'HOLD','missing':missing,'quality':q.get('status'),'drift':d.get('status'),'updated':now(),'auto_betting':False,'scope':'prediction-model-only','model_source':source,'registry':registry if ok else {}}
+ plan=readj(PLAN,{}) or {};current=split_id(plan) if plan.get('splits') else None;core=readj(REPORTS/'CORE-005_decision.json',{}) or {};cal=readj(REPORTS/'CORE-010_decision.json',{}) or {};exp=readj(REPORTS/'EXPERIMENT_registry.json',{}) or {};meta=readj(REPORTS/'model_registry.json',{}) or {}
+ missing=[]
+ if not plan.get('splits'):missing.append(str(PLAN))
+ if core.get('status')!='PASS' or core.get('split_id')!=current:missing.append('CORE-005 current split')
+ if cal.get('status')!='PASS' or cal.get('split_id')!=current:missing.append('CORE-010 current split')
+ if exp.get('split_id')==current and exp.get('targets'):source='EXPERIMENT_REGISTRY';registry=exp
+ elif meta and meta.get('split_id')==current:source='META_REGISTRY';registry=meta
+ else:source='CORE-005_CHAMPION';registry=core.get('champion',{}) if core.get('split_id')==current else {}
+ temporal_status=plan.get('status','WAITING');ok=not missing and bool(registry) and temporal_status in ('PASS','WARN') and q.get('status')=='PASS' and d.get('status')!='ALERT'
+ manifest={'status':'READY' if ok else 'HOLD','split_id':current,'temporal_status':temporal_status,'missing':missing,'quality':q.get('status'),'drift':d.get('status'),'updated':now(),'auto_betting':False,'scope':'prediction-model-only','model_source':source,'registry':registry if ok else {}}
  writej(PROD/'production_manifest.json',manifest);return manifest
 def worker_health(mem):
  out={}
@@ -76,9 +82,9 @@ def worker_health(mem):
   out[script]={'status':status,'pid':pid,'restarts':restarts,'last_state_update':st.get('updated') or st.get('updated_at')}
  return out
 def run_once():
- prev=readj(STATE,{}) or {};workers=worker_health(prev.get('workers',{}));q=quality_audit();d=drift_audit();prod=production_gate(q,d);status='BLOCKED' if q.get('status')=='BLOCKED' else ('DEGRADED' if any(v.get('status') in ('FAILED','DEAD') for v in workers.values()) or d.get('status')=='ALERT' else 'PASS');state={'updated':now(),'status':status,'workers':workers,'data_quality':q,'drift':d,'production':prod};writej(STATE,state);return state
+ prev=readj(STATE,{}) or {};workers=worker_health(prev.get('workers',{}));q=quality_audit();d=drift_audit();prod=production_gate(q,d);plan=readj(PLAN,{}) or {};temporal=plan.get('status','WAITING');bad_worker=any(v.get('status') in ('FAILED','DEAD') for v in workers.values());status='BLOCKED' if q.get('status')=='BLOCKED' or temporal=='BLOCKED' else ('DEGRADED' if bad_worker or d.get('status')=='ALERT' else 'PASS');state={'updated':now(),'status':status,'workers':workers,'temporal_plan':{'status':temporal,'date_range':plan.get('date_range'),'population':plan.get('population'),'gates':plan.get('gates')},'data_quality':q,'drift':d,'production':prod};writej(STATE,state);return state
 def main():
- log('AUTONOMY SUPERVISOR START v1.2')
+ log('AUTONOMY SUPERVISOR START v1.3')
  while True:
   try:run_once()
   except Exception as e:log(f'ERROR {e!r}')
