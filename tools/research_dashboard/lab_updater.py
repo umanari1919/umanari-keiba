@@ -16,6 +16,7 @@ BASE = "https://raw.githubusercontent.com/umanari1919/umanari-keiba/main/tools/r
 STATE = ROOT / "checkpoints" / "lab_updater_state.json"
 DIRECTOR_STATE = ROOT / "checkpoints" / "research_director_state.json"
 PROBABILITY_STATE = ROOT / "checkpoints" / "probability_director_state.json"
+META_STATE = ROOT / "checkpoints" / "meta_research_director_state.json"
 LOG = ROOT / "logs" / "lab_updater.log"
 INTERVAL = int(os.environ.get("THE_JOCKEY_UPDATE_INTERVAL", "300"))
 
@@ -23,6 +24,7 @@ FILES = [
     "dashboard_server.py",
     "research_director.py",
     "probability_director.py",
+    "meta_research_director.py",
     "start-dashboard.ps1",
     "start-research-lab.ps1",
     "lab_updater.py",
@@ -50,7 +52,7 @@ def sha256(data: bytes) -> str:
 def fetch(name: str) -> bytes:
     req = urllib.request.Request(
         f"{BASE}/{name}?t={int(time.time())}",
-        headers={"User-Agent": "THE-JOCKEY-Research-Lab-Updater/1.2"},
+        headers={"User-Agent": "THE-JOCKEY-Research-Lab-Updater/1.3"},
     )
     with urllib.request.urlopen(req, timeout=30) as r:
         return r.read()
@@ -127,6 +129,20 @@ def restart_worker(script_name: str, state_path: Path) -> dict:
     return {"script": script_name, "old_pid": old_pid or None, "new_pid": new_pid}
 
 
+def ensure_worker(script_name: str, state_path: Path, restarts: list, errors: list) -> None:
+    if not (ROOT / script_name).exists():
+        return
+    state = read_json(state_path, {}) or {}
+    pid = int(state.get("pid") or 0)
+    if not process_alive(pid):
+        try:
+            new_pid = start_worker(script_name)
+            restarts.append({"script": script_name, "old_pid": None, "new_pid": new_pid})
+            log(f"STARTED {script_name} new_pid={new_pid}")
+        except Exception as e:
+            errors.append({"file": script_name, "error": f"start failed: {e!r}"})
+
+
 def run_once() -> dict:
     updated = []
     unchanged = []
@@ -151,6 +167,7 @@ def run_once() -> dict:
     restart_specs = [
         ("research_director.py", DIRECTOR_STATE),
         ("probability_director.py", PROBABILITY_STATE),
+        ("meta_research_director.py", META_STATE),
     ]
     for script_name, state_path in restart_specs:
         if script_name in updated:
@@ -159,18 +176,8 @@ def run_once() -> dict:
             except Exception as e:
                 errors.append({"file": script_name, "error": f"restart failed: {e!r}"})
                 log(f"ERROR restarting {script_name}: {e!r}")
-
-    # First appearance of the probability worker must start automatically.
-    if "probability_director.py" not in updated and (ROOT / "probability_director.py").exists():
-        pstate = read_json(PROBABILITY_STATE, {}) or {}
-        ppid = int(pstate.get("pid") or 0)
-        if not process_alive(ppid):
-            try:
-                new_pid = start_worker("probability_director.py")
-                restarts.append({"script": "probability_director.py", "old_pid": None, "new_pid": new_pid})
-                log(f"STARTED probability_director.py new_pid={new_pid}")
-            except Exception as e:
-                errors.append({"file": "probability_director.py", "error": f"start failed: {e!r}"})
+        else:
+            ensure_worker(script_name, state_path, restarts, errors)
 
     state = {
         "updated_at": now(),
@@ -186,7 +193,7 @@ def run_once() -> dict:
 
 
 def main() -> None:
-    log("LAB UPDATER START v1.2")
+    log("LAB UPDATER START v1.3")
     while True:
         run_once()
         time.sleep(max(60, INTERVAL))

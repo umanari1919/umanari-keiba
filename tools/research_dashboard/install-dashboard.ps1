@@ -7,7 +7,6 @@ $Root = if ($env:THE_JOCKEY_RESEARCH_ROOT) {
 }
 
 New-Item -ItemType Directory -Force -Path $Root | Out-Null
-
 $Base = 'https://raw.githubusercontent.com/umanari1919/umanari-keiba/main/tools/research_dashboard'
 
 $Files = @(
@@ -15,6 +14,7 @@ $Files = @(
     @{ Name = 'start-dashboard.ps1'; Url = "$Base/start-dashboard.ps1" },
     @{ Name = 'research_director.py'; Url = "$Base/research_director.py" },
     @{ Name = 'probability_director.py'; Url = "$Base/probability_director.py" },
+    @{ Name = 'meta_research_director.py'; Url = "$Base/meta_research_director.py" },
     @{ Name = 'start-research-lab.ps1'; Url = "$Base/start-research-lab.ps1" },
     @{ Name = 'lab_updater.py'; Url = "$Base/lab_updater.py" }
 )
@@ -29,6 +29,7 @@ Write-Host ''
 Write-Host 'Autonomous Research Lab installed.'
 Write-Host 'Self Update: ENABLED'
 Write-Host 'Probability Pipeline: ENABLED'
+Write-Host 'Meta Improvement: ENABLED'
 Write-Host "Start with: $Root\start-research-lab.ps1"
 Write-Host ''
 
