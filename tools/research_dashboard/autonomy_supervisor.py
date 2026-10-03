@@ -8,7 +8,7 @@ ROOT = Path(os.environ.get('THE_JOCKEY_RESEARCH_ROOT', Path.home()/'Downloads'/'
 CORE = ROOT/'CORE'; DATA = CORE/'data'; REPORTS = CORE/'reports'; CHECK = ROOT/'checkpoints'; LOGS = ROOT/'logs'
 STATE = CHECK/'autonomy_supervisor_state.json'; LOG = LOGS/'autonomy_supervisor.log'; PROD = ROOT/'production'
 INTERVAL = int(os.environ.get('THE_JOCKEY_SUPERVISOR_INTERVAL','60')); MAX_RESTARTS = int(os.environ.get('THE_JOCKEY_MAX_RESTARTS','5'))
-WORKERS = {'research_director.py':'research_director_state.json','probability_director.py':'probability_director_state.json','meta_research_director.py':'meta_research_director_state.json','feature_research_director.py':'feature_research_director_state.json','experiment_director.py':'experiment_director_state.json','domain_research_director.py':'domain_research_director_state.json','ensemble_director.py':'ensemble_director_state.json'}
+WORKERS = {'research_director.py':'research_director_state.json','probability_director.py':'probability_director_state.json','meta_research_director.py':'meta_research_director_state.json','feature_research_director.py':'feature_research_director_state.json','experiment_director.py':'experiment_director_state.json','hypothesis_generator.py':'hypothesis_generator_state.json','domain_research_director.py':'domain_research_director_state.json','ensemble_director.py':'ensemble_director_state.json'}
 BASE='https://raw.githubusercontent.com/umanari1919/umanari-keiba/main/tools/research_dashboard'
 for p in (CHECK,LOGS,PROD,REPORTS): p.mkdir(parents=True,exist_ok=True)
 def now(): return datetime.now().astimezone().isoformat()
@@ -30,7 +30,7 @@ def bootstrap(script):
  path=ROOT/script
  if path.exists():return True
  try:
-  req=urllib.request.Request(f'{BASE}/{script}?t={time.time_ns()}',headers={'User-Agent':'THE-JOCKEY-Autonomy-Supervisor/1.1'})
+  req=urllib.request.Request(f'{BASE}/{script}?t={time.time_ns()}',headers={'User-Agent':'THE-JOCKEY-Autonomy-Supervisor/1.2'})
   with urllib.request.urlopen(req,timeout=30) as r:data=r.read()
   tmp=path.with_suffix(path.suffix+'.bootstrap');tmp.write_bytes(data);tmp.replace(path);log(f'BOOTSTRAP {script}');return True
  except Exception as e:log(f'BOOTSTRAP FAILED {script}: {e!r}');return False
@@ -78,7 +78,7 @@ def worker_health(mem):
 def run_once():
  prev=readj(STATE,{}) or {};workers=worker_health(prev.get('workers',{}));q=quality_audit();d=drift_audit();prod=production_gate(q,d);status='BLOCKED' if q.get('status')=='BLOCKED' else ('DEGRADED' if any(v.get('status') in ('FAILED','DEAD') for v in workers.values()) or d.get('status')=='ALERT' else 'PASS');state={'updated':now(),'status':status,'workers':workers,'data_quality':q,'drift':d,'production':prod};writej(STATE,state);return state
 def main():
- log('AUTONOMY SUPERVISOR START v1.1')
+ log('AUTONOMY SUPERVISOR START v1.2')
  while True:
   try:run_once()
   except Exception as e:log(f'ERROR {e!r}')

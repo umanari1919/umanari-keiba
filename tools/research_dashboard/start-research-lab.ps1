@@ -7,6 +7,7 @@ $Workers = @(
     @{File='meta_research_director.py'; Label='Meta Research Director'},
     @{File='feature_research_director.py'; Label='Feature Research Director'},
     @{File='experiment_director.py'; Label='Experiment Director'},
+    @{File='hypothesis_generator.py'; Label='Hypothesis Generator'},
     @{File='domain_research_director.py'; Label='Domain Research Director'},
     @{File='ensemble_director.py'; Label='Ensemble Director'},
     @{File='autonomy_supervisor.py'; Label='Autonomy Supervisor'},
@@ -21,7 +22,8 @@ Write-Host ' THE JOCKEY 完全自律研究所'
 Write-Host '============================================================'
 Write-Host "Research Root : $Root"
 Write-Host 'Research      : autonomous'
-Write-Host 'Experiments   : continuous'
+Write-Host 'Experiments   : TURBO continuous'
+Write-Host 'Hypotheses    : self-generating'
 Write-Host 'Probability   : autonomous'
 Write-Host 'Meta Improve  : autonomous'
 Write-Host 'Feature Lab   : autonomous'
