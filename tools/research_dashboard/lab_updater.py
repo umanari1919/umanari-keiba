@@ -3,6 +3,9 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import signal
+import subprocess
+import sys
 import time
 import urllib.request
 from datetime import datetime
@@ -11,6 +14,7 @@ from pathlib import Path
 ROOT = Path(os.environ.get("THE_JOCKEY_RESEARCH_ROOT", Path.home() / "Downloads" / "THE-JOCKEY-RESEARCH"))
 BASE = "https://raw.githubusercontent.com/umanari1919/umanari-keiba/main/tools/research_dashboard"
 STATE = ROOT / "checkpoints" / "lab_updater_state.json"
+DIRECTOR_STATE = ROOT / "checkpoints" / "research_director_state.json"
 LOG = ROOT / "logs" / "lab_updater.log"
 INTERVAL = int(os.environ.get("THE_JOCKEY_UPDATE_INTERVAL", "300"))
 
@@ -44,7 +48,7 @@ def sha256(data: bytes) -> str:
 def fetch(name: str) -> bytes:
     req = urllib.request.Request(
         f"{BASE}/{name}?t={int(time.time())}",
-        headers={"User-Agent": "THE-JOCKEY-Research-Lab-Updater/1.0"},
+        headers={"User-Agent": "THE-JOCKEY-Research-Lab-Updater/1.1"},
     )
     with urllib.request.urlopen(req, timeout=30) as r:
         return r.read()
@@ -63,10 +67,69 @@ def atomic_replace(path: Path, data: bytes) -> None:
     tmp.replace(path)
 
 
+def read_json(path: Path, default=None):
+    try:
+        return json.loads(path.read_text(encoding="utf-8-sig"))
+    except Exception:
+        return default
+
+
+def process_alive(pid: int) -> bool:
+    if not pid or pid <= 0:
+        return False
+    try:
+        os.kill(pid, 0)
+        return True
+    except Exception:
+        return False
+
+
+def stop_process(pid: int) -> None:
+    if not process_alive(pid):
+        return
+    try:
+        os.kill(pid, signal.SIGTERM)
+        for _ in range(30):
+            time.sleep(0.2)
+            if not process_alive(pid):
+                return
+    except Exception:
+        pass
+    if os.name == "nt" and process_alive(pid):
+        subprocess.run(["taskkill", "/PID", str(pid), "/T", "/F"], capture_output=True, text=True)
+
+
+def start_director() -> int:
+    script = ROOT / "research_director.py"
+    flags = 0
+    if os.name == "nt":
+        flags = getattr(subprocess, "CREATE_NO_WINDOW", 0) | getattr(subprocess, "DETACHED_PROCESS", 0)
+    proc = subprocess.Popen(
+        [sys.executable, str(script)],
+        cwd=str(ROOT),
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+        creationflags=flags,
+        env={**os.environ, "THE_JOCKEY_RESEARCH_ROOT": str(ROOT)},
+    )
+    return proc.pid
+
+
+def restart_director() -> dict:
+    old = read_json(DIRECTOR_STATE, {}) or {}
+    old_pid = int(old.get("pid") or 0)
+    if old_pid and old_pid != os.getpid():
+        stop_process(old_pid)
+    new_pid = start_director()
+    log(f"RESTARTED research_director.py old_pid={old_pid or '-'} new_pid={new_pid}")
+    return {"old_pid": old_pid or None, "new_pid": new_pid}
+
+
 def run_once() -> dict:
     updated = []
     unchanged = []
     errors = []
+    restart = None
 
     for name in FILES:
         try:
@@ -83,10 +146,18 @@ def run_once() -> dict:
             errors.append({"file": name, "error": repr(e)})
             log(f"ERROR {name}: {e!r}")
 
+    if "research_director.py" in updated:
+        try:
+            restart = restart_director()
+        except Exception as e:
+            errors.append({"file": "research_director.py", "error": f"restart failed: {e!r}"})
+            log(f"ERROR restarting research_director.py: {e!r}")
+
     state = {
         "updated_at": now(),
         "updated_files": updated,
         "unchanged_files": unchanged,
+        "restart": restart,
         "errors": errors,
         "interval_seconds": INTERVAL,
         "status": "PASS" if not errors else "PARTIAL",
@@ -96,7 +167,7 @@ def run_once() -> dict:
 
 
 def main() -> None:
-    log("LAB UPDATER START")
+    log("LAB UPDATER START v1.1")
     while True:
         run_once()
         time.sleep(max(60, INTERVAL))
