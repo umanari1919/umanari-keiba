@@ -12,7 +12,9 @@ $Base = 'https://raw.githubusercontent.com/umanari1919/umanari-keiba/main/tools/
 
 $Files = @(
     @{ Name = 'dashboard_server.py'; Url = "$Base/dashboard_server.py" },
-    @{ Name = 'start-dashboard.ps1'; Url = "$Base/start-dashboard.ps1" }
+    @{ Name = 'start-dashboard.ps1'; Url = "$Base/start-dashboard.ps1" },
+    @{ Name = 'research_director.py'; Url = "$Base/research_director.py" },
+    @{ Name = 'start-research-lab.ps1'; Url = "$Base/start-research-lab.ps1" }
 )
 
 foreach ($f in $Files) {
@@ -22,9 +24,9 @@ foreach ($f in $Files) {
 }
 
 Write-Host ''
-Write-Host 'Dashboard installed.'
-Write-Host "Start with: $Root\start-dashboard.ps1"
+Write-Host 'Autonomous Research Lab installed.'
+Write-Host "Start with: $Root\start-research-lab.ps1"
 Write-Host ''
 
 Set-Location $Root
-& .\start-dashboard.ps1
+& .\start-research-lab.ps1
