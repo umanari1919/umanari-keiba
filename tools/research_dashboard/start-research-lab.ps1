@@ -1,54 +1,38 @@
 $ErrorActionPreference = 'Stop'
-
-$Root = if ($env:THE_JOCKEY_RESEARCH_ROOT) {
-    $env:THE_JOCKEY_RESEARCH_ROOT
-} else {
-    Join-Path $HOME 'Downloads\THE-JOCKEY-RESEARCH'
-}
-
-$Director = Join-Path $Root 'research_director.py'
-$ProbabilityDirector = Join-Path $Root 'probability_director.py'
-$MetaDirector = Join-Path $Root 'meta_research_director.py'
-$FeatureDirector = Join-Path $Root 'feature_research_director.py'
-$Dashboard = Join-Path $Root 'dashboard_server.py'
-$Updater = Join-Path $Root 'lab_updater.py'
-
-foreach ($p in @($Director,$ProbabilityDirector,$MetaDirector,$FeatureDirector,$Dashboard,$Updater)) {
-    if (-not (Test-Path $p)) { throw "必要ファイルが見つかりません: $p" }
-}
-
+$Root = if ($env:THE_JOCKEY_RESEARCH_ROOT) { $env:THE_JOCKEY_RESEARCH_ROOT } else { Join-Path $HOME 'Downloads\THE-JOCKEY-RESEARCH' }
 $env:THE_JOCKEY_RESEARCH_ROOT = $Root
-
+$Workers = @(
+    @{File='research_director.py'; Label='Research Director'},
+    @{File='probability_director.py'; Label='Probability Director'},
+    @{File='meta_research_director.py'; Label='Meta Research Director'},
+    @{File='feature_research_director.py'; Label='Feature Research Director'},
+    @{File='domain_research_director.py'; Label='Domain Research Director'},
+    @{File='ensemble_director.py'; Label='Ensemble Director'},
+    @{File='autonomy_supervisor.py'; Label='Autonomy Supervisor'},
+    @{File='lab_updater.py'; Label='Lab Updater'}
+)
+$Dashboard = Join-Path $Root 'dashboard_server.py'
+foreach ($w in $Workers) { $w.Path = Join-Path $Root $w.File; if (-not (Test-Path $w.Path)) { throw "必要ファイルが見つかりません: $($w.Path)" } }
+if (-not (Test-Path $Dashboard)) { throw "必要ファイルが見つかりません: $Dashboard" }
 Write-Host ''
 Write-Host '============================================================'
-Write-Host ' THE JOCKEY 自律研究所'
+Write-Host ' THE JOCKEY 完全自律研究所'
 Write-Host '============================================================'
 Write-Host "Research Root : $Root"
-Write-Host 'Director      : autonomous'
+Write-Host 'Research      : autonomous'
 Write-Host 'Probability   : autonomous'
 Write-Host 'Meta Improve  : autonomous'
 Write-Host 'Feature Lab   : autonomous'
+Write-Host 'JRA/NAR       : autonomous'
+Write-Host 'Ensemble      : autonomous'
+Write-Host 'Quality/Drift : autonomous'
+Write-Host 'Recovery      : autonomous'
 Write-Host 'Self Update   : enabled'
 Write-Host 'Dashboard     : http://127.0.0.1:8791'
 Write-Host ''
-
-function Start-WorkerIfMissing {
-    param([string]$Pattern,[string]$Script,[string]$Label)
-    $Existing = Get-CimInstance Win32_Process | Where-Object {
-        $_.CommandLine -like "*$Pattern*" -and $_.ProcessId -ne $PID
-    }
-    if (-not $Existing) {
-        Start-Process -FilePath 'py' -ArgumentList @($Script) -WorkingDirectory $Root -WindowStyle Hidden
-        Write-Host ("{0,-24}: STARTED" -f $Label)
-    } else {
-        Write-Host ("{0,-24}: ALREADY RUNNING" -f $Label)
-    }
+foreach ($w in $Workers) {
+    $existing = Get-CimInstance Win32_Process | Where-Object { $_.CommandLine -like "*$($w.File)*" -and $_.ProcessId -ne $PID }
+    if (-not $existing) { Start-Process -FilePath 'py' -ArgumentList @($w.Path) -WorkingDirectory $Root -WindowStyle Hidden; Write-Host ("{0,-26}: STARTED" -f $w.Label) }
+    else { Write-Host ("{0,-26}: ALREADY RUNNING" -f $w.Label) }
 }
-
-Start-WorkerIfMissing 'research_director.py' $Director 'Research Director'
-Start-WorkerIfMissing 'probability_director.py' $ProbabilityDirector 'Probability Director'
-Start-WorkerIfMissing 'meta_research_director.py' $MetaDirector 'Meta Research Director'
-Start-WorkerIfMissing 'feature_research_director.py' $FeatureDirector 'Feature Research Director'
-Start-WorkerIfMissing 'lab_updater.py' $Updater 'Lab Updater'
-
 py $Dashboard
