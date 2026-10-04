@@ -22,6 +22,11 @@ def q(n):return '"'+str(n).replace('"','""')+'"'
 def load_json(p):
  try:return json.loads(Path(p).read_text(encoding='utf-8-sig'))
  except Exception:return None
+def lineage(event_type,source_id,source_artifact='',parent_artifact='',output_artifact='',details=None):
+ try:
+  from data_lineage import append_event
+  append_event(event_type,source_id=source_id,source_artifact=str(source_artifact or ''),parent_artifact=str(parent_artifact or ''),output_artifact=str(output_artifact or ''),policy='STAGING_CANONICAL_BRIDGE',details=details or {})
+ except Exception:pass
 def contract_for(source_id):
  for p in CONTRACTS.glob('*.json'):
   x=load_json(p)
@@ -85,7 +90,9 @@ def process_source(root):
   if new_rows and not candidate_path.exists():con.execute(f'''COPY (SELECT c.* FROM candidate c LEFT JOIN {active_expr} b ON cast(b.race_horse_id as varchar)=cast(c.race_horse_id as varchar) WHERE b.race_horse_id IS NULL) TO {lit(candidate_path)} (FORMAT PARQUET,COMPRESSION ZSTD)''')
   if conflicts and not conflict_path.exists():con.execute(f'''COPY (SELECT c.* FROM candidate c JOIN {active_expr} b ON cast(b.race_horse_id as varchar)=cast(c.race_horse_id as varchar) WHERE {sig}<>{bsig}) TO {lit(conflict_path)} (FORMAT PARQUET,COMPRESSION ZSTD)''')
   result={'source_id':source_id,'status':'READY' if new_rows else ('CONFLICT' if conflicts else 'NOOP'),'staged_rows':total,'new_rows':new_rows,'exact_duplicates':dups,'conflicts':conflicts,'candidate':str(candidate_path) if new_rows else None,'candidate_sha256':sha(candidate_path) if new_rows else None,'conflict_artifact':str(conflict_path) if conflicts else None,'contract':str(cp),'active_canonical':str(active),'policy':'new-only candidate; exact duplicates ignored; conflicting existing IDs quarantined; no overwrite'}
-  if new_rows:writej(meta_path,{**result,'created_at':now()})
+  if new_rows:
+   writej(meta_path,{**result,'created_at':now()});lineage('BRIDGE_NEW_ROWS',source_id,source_artifact=root/'manifest.json',parent_artifact=active,output_artifact=candidate_path,details={'new_rows':new_rows,'exact_duplicates':dups,'conflicts':conflicts})
+  if conflicts:lineage('BRIDGE_CONFLICTS',source_id,source_artifact=root/'manifest.json',parent_artifact=active,output_artifact=conflict_path,details={'conflicts':conflicts})
   return result
  finally:con.close()
 def run_once():
