@@ -3,6 +3,11 @@ import csv, json, os, time, traceback
 from datetime import datetime
 from pathlib import Path
 import pandas as pd
+try:
+    from modern_data_engine import inventory_scan, capabilities
+except Exception:
+    inventory_scan=lambda path: None
+    capabilities=lambda: {'duckdb':False,'polars':False,'pyarrow':False}
 
 ROOT=Path(os.environ.get('THE_JOCKEY_RESEARCH_ROOT',Path.home()/'Downloads'/'THE-JOCKEY-RESEARCH'))
 CORE=ROOT/'CORE'; DATA=CORE/'data'; REPORTS=CORE/'reports'; CHECK=ROOT/'checkpoints'; LOG=ROOT/'logs'/'data_inventory_director.log'; STATE=CHECK/'data_inventory_director_state.json'
@@ -33,6 +38,11 @@ def norm_scope(v):
 def scan_csv(path:Path, role:str):
     out=[]
     if not path.exists():return out
+    fast=inventory_scan(path)
+    if fast:
+        for x in fast:
+            out.append({'source_type':'CSV','source':path.name,'role':role,'domain':x['domain'],'rows':x['rows'],'races':x['races'],'horses':x['horses'],'labeled_rows':x['labeled_rows'],'start_date':x['start_date'],'end_date':x['end_date'],'path':str(path),'engine':'DUCKDB'})
+        return out
     use=['race_id','race_horse_id','horse_id','race_date','race_scope_cd','label_win','finish_order']
     rows={'JRA':0,'NAR':0};races={'JRA':set(),'NAR':set()};horses={'JRA':set(),'NAR':set()};dates={'JRA':[],'NAR':[]};labeled={'JRA':0,'NAR':0}
     try:
@@ -53,9 +63,9 @@ def scan_csv(path:Path, role:str):
                 elif 'finish_order' in x:labeled[domain]+=int(x['finish_order'].notna().sum())
         for domain in ('JRA','NAR'):
             ds=dates[domain]
-            out.append({'source_type':'CSV','source':path.name,'role':role,'domain':domain,'rows':rows[domain],'races':len(races[domain]),'horses':len(horses[domain]),'labeled_rows':labeled[domain],'start_date':min(ds).date().isoformat() if ds else '', 'end_date':max(ds).date().isoformat() if ds else '', 'path':str(path)})
+            out.append({'source_type':'CSV','source':path.name,'role':role,'domain':domain,'rows':rows[domain],'races':len(races[domain]),'horses':len(horses[domain]),'labeled_rows':labeled[domain],'start_date':min(ds).date().isoformat() if ds else '', 'end_date':max(ds).date().isoformat() if ds else '', 'path':str(path),'engine':'PANDAS_FALLBACK'})
     except Exception as e:
-        out.append({'source_type':'CSV','source':path.name,'role':role,'domain':'ERROR','rows':0,'races':0,'horses':0,'labeled_rows':0,'start_date':'','end_date':'','path':str(path),'error':repr(e)})
+        out.append({'source_type':'CSV','source':path.name,'role':role,'domain':'ERROR','rows':0,'races':0,'horses':0,'labeled_rows':0,'start_date':'','end_date':'','path':str(path),'engine':'PANDAS_FALLBACK','error':repr(e)})
     return out
 
 def pg_inventory():
@@ -106,8 +116,7 @@ def run_once():
     for p,role in candidates:source_rows.extend(scan_csv(p,role))
     source_rows.extend(pg_inventory())
     pd.DataFrame(source_rows).to_csv(SOURCES,index=False,encoding='utf-8-sig')
-    usage=split_usage()
-    gap=[]
+    usage=split_usage();gap=[]
     for domain in ('JRA','NAR'):
         csv_dom=[r for r in source_rows if r.get('domain')==domain and r.get('source_type')=='CSV']
         holding=max([int(r.get('races') or 0) for r in csv_dom if r.get('role') in ('POPULATION_AUDIT','CANONICAL_FEATURE_BASE')] or [0])
@@ -117,13 +126,14 @@ def run_once():
     pd.DataFrame(gap).to_csv(GAP,index=False,encoding='utf-8-sig')
     nar=next(x for x in gap if x['domain']=='NAR');jra=next(x for x in gap if x['domain']=='JRA')
     pg_nar=sum(int(r.get('rows') or 0) for r in source_rows if r.get('source_type')=='POSTGRES' and r.get('domain')=='NAR')
-    summary={'status':'PASS','updated':now(),'sources':len(source_rows),'postgres_nar_candidate_rows':pg_nar,'domains':{'JRA':jra,'NAR':nar},'split_usage':usage,'alerts':[]}
+    caps=capabilities()
+    summary={'status':'PASS','updated':now(),'sources':len(source_rows),'data_engine':caps,'postgres_nar_candidate_rows':pg_nar,'domains':{'JRA':jra,'NAR':nar},'split_usage':usage,'alerts':[]}
     for x in (jra,nar):
         rate=x.get('research_utilization_rate')
         if rate is not None and rate<0.90:summary['alerts'].append(f"{x['domain']}_research_utilization_below_90pct:{rate:.3f}")
     if nar.get('unutilized_races',0)>0:summary['alerts'].append(f"NAR_unutilized_races:{nar['unutilized_races']}")
     if any(r.get('role')=='UNAVAILABLE' for r in source_rows if r.get('source_type')=='POSTGRES'):summary['alerts'].append('PostgreSQL_inventory_unavailable')
-    writej(SUMMARY,summary);state('PASS','Inventory refreshed',{'nar':nar,'jra':jra,'alerts':summary['alerts']});log(f"INVENTORY PASS NAR holding={nar['holding_races_best_known']} research={nar['research_input_races']} gap={nar['unutilized_races']}")
+    writej(SUMMARY,summary);state('PASS','Inventory refreshed',{'nar':nar,'jra':jra,'alerts':summary['alerts'],'data_engine':caps});log(f"INVENTORY PASS engine={'DUCKDB' if caps.get('duckdb') else 'PANDAS'} NAR holding={nar['holding_races_best_known']} research={nar['research_input_races']} gap={nar['unutilized_races']}")
 
 def main():
     log('DATA INVENTORY DIRECTOR START')
