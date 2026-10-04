@@ -47,9 +47,15 @@ def _bridge(cards):
  if blocked>0:cards.append(_card('bridge:blocked','Staging→Canonical BridgeのBLOCKを復旧','FOUNDATION','BRIDGE_RECOVERY',{'source':'STAGING_CANONICAL_BRIDGE_summary.json','blocked_sources':blocked},5,5,5,2,1,'staging_canonical_bridge'))
  if conflicts>cases:cards.append(_card('bridge:conflicts','Canonical競合を証拠ベースで判定','DATA','CANONICAL_CONFLICT',{'source':'STAGING_CANONICAL_BRIDGE_summary.json + CONFLICT_RESOLUTION_summary.json','conflicts':conflicts,'cases':cases},5,5,5,2,3,'conflict_resolution_director'))
 def _lineage(cards):
- recon=readj(REPORTS/'DATA_RECONCILIATION_summary.json',{}) or {};bridge=readj(REPORTS/'STAGING_CANONICAL_BRIDGE_summary.json',{}) or {};ledger=REPORTS/'DATA_LINEAGE_ledger.csv'
- evidence_exists=bool(recon.get('changed') or int(bridge.get('new_rows') or 0)>0 or int(bridge.get('conflicts') or 0)>0)
+ recon=readj(REPORTS/'DATA_RECONCILIATION_summary.json',{}) or {};bridge=readj(REPORTS/'STAGING_CANONICAL_BRIDGE_summary.json',{}) or {};ledger=REPORTS/'DATA_LINEAGE_ledger.csv';evidence_exists=bool(recon.get('changed') or int(bridge.get('new_rows') or 0)>0 or int(bridge.get('conflicts') or 0)>0)
  if evidence_exists and not ledger.exists():cards.append(_card('lineage:missing','データ系譜台帳を復旧','FOUNDATION','LINEAGE_GAP',{'source':'reconciliation/bridge reports','ledger_exists':False},5,5,5,1,1,'conflict_resolution_director'))
+def _factory(cards):
+ s=readj(REPORTS/'RESEARCH_FACTORY_ideas.json',{}) or {}
+ for x in (s.get('ideas') or [])[:30]:
+  if not isinstance(x,dict):continue
+  status=x.get('status');kind=x.get('kind','RESEARCH_IDEA');key=str(x.get('key') or 'unknown');title=str(x.get('title') or key);impact=int(x.get('impact') or 3);conf=int(x.get('confidence') or 3)
+  if status=='READY':cards.append(_card(f'factory:{key}',title,'RESEARCH',kind,{'source':'RESEARCH_FACTORY_ideas.json','idea':key,'evidence':x.get('evidence')},impact,3,conf,2,1,x.get('worker') or 'feature_research_director'))
+  elif status=='NEEDS_DATA':cards.append(_card(f'factory-data:{key}',f'研究前提データを整備: {title}','DATA','RESEARCH_DATA_REQUIREMENT',{'source':'RESEARCH_FACTORY_ideas.json','idea':key,'missing_columns':x.get('missing_columns')},impact,4,conf,3,2,'source_adapter_director'))
 def _foundation(cards):
  f=readj(REPORTS/'FOUNDATION_SELFTEST_report.json',{}) or {}
  if f.get('status')=='BLOCKED':cards.append(_card('foundation:blockers','基盤BLOCKERを最優先で解消','FOUNDATION','BLOCKER',{'blockers':f.get('blockers',[])[:10]},5,5,5,2,1,'foundation_selftest_director'))
@@ -66,8 +72,8 @@ def _experiment(cards):
  recent=rows[-30:];keep=sum(str(r.get('status','')).upper()=='KEEP' for r in recent)
  if len(recent)>=20 and keep<=1:cards.append(_card('experiments:stagnation','探索停滞から新しい特徴量仮説を生成','RESEARCH','STAGNATION',{'recent_trials':len(recent),'keep':keep},4,3,4,3,1,'hypothesis_generator'))
 def run_once()->dict[str,Any]:
- cards=[];_foundation(cards);_inventory(cards);_source(cards);_staging(cards);_bridge(cards);_lineage(cards);_failure(cards);_blind(cards);_experiment(cards);uniq={}
+ cards=[];_foundation(cards);_inventory(cards);_source(cards);_staging(cards);_bridge(cards);_lineage(cards);_factory(cards);_failure(cards);_blind(cards);_experiment(cards);uniq={}
  for c in cards:
   old=uniq.get(c['key'])
   if old is None or (c['impact']+c['urgency'])>(old['impact']+old['urgency']):uniq[c['key']]=c
- out={'updated':now(),'count':len(uniq),'materials':list(uniq.values()),'policy':'Research materials are generated only from observed reports/states. No horse-racing fact, schema meaning, or result is invented.'};REPORTS.mkdir(parents=True,exist_ok=True);tmp=OUT.with_suffix('.tmp');tmp.write_text(json.dumps(out,ensure_ascii=False,indent=2),encoding='utf-8');tmp.replace(OUT);return out
+ out={'updated':now(),'count':len(uniq),'materials':list(uniq.values()),'policy':'Research materials are generated only from observed reports/states. Research Factory READY ideas become research missions; unsupported ideas become data requirements.'};REPORTS.mkdir(parents=True,exist_ok=True);tmp=OUT.with_suffix('.tmp');tmp.write_text(json.dumps(out,ensure_ascii=False,indent=2),encoding='utf-8');tmp.replace(OUT);return out

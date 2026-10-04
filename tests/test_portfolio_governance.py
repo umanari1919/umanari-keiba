@@ -61,3 +61,14 @@ def test_lineage_event_is_deduplicated(tmp_path):
 
 def test_material_cards_are_evidence_based():
     m=load('research_material_engine');card=m._card('x','title','RESEARCH','TEST',{'source':'unit-test'},3,3,3,2,1,'experiment_director');assert card['evidence']['source']=='unit-test';assert 'result' not in card
+
+def test_research_factory_gates_unsupported_specialists():
+    r=load('research_factory_director');ideas=r.build_ideas({'race_scope_cd','label_win','label_top2','label_top3','prior_start_count','field_strength_v2','prior_avg_field_strength'})
+    by={x['key']:x for x in ideas}
+    assert by['field-strength-step']['status']=='READY'
+    assert by['jra-morning-capital']['status']=='NEEDS_DATA'
+    assert '__JRA_MORNING_SEGMENT_COLUMN__' in by['jra-morning-capital']['missing_columns']
+    assert by['obstacle-specialist']['status']=='NEEDS_DATA'
+
+def test_research_factory_data_requirement_outranks_routine_audit():
+    p=load('mission_portfolio');req={'department':'DATA','kind':'RESEARCH_DATA_REQUIREMENT','impact':5,'urgency':4,'confidence':4,'cost':3,'risk':2};routine={'department':'AUDIT','kind':'SAMPLE_GROWTH','impact':3,'urgency':2,'confidence':5,'cost':1,'risk':1};assert p.score(req)>p.score(routine);assert 'research_factory_director' in p.ALWAYS_ON
