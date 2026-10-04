@@ -16,6 +16,11 @@ def test_specialist_segment_requires_explicit_column_and_values():
  m=s.segment_mask(df,{'column':'race_type','values':['DEBUT'],'race_scope_cd':1})
  assert m.tolist()==[True,False,False]
 
+def test_jra_morning_contract_supports_compound_and_filters():
+ s=load('specialist_research_director');df=pd.DataFrame({'race_scope_cd':[1,1,1,2],'session_phase':['MORNING','MORNING','AFTERNOON','MORNING'],'race_type':['MAIDEN','OPEN','MAIDEN','MAIDEN']})
+ spec={'race_scope_cd':1,'filters':[{'column':'session_phase','values':['MORNING']},{'column':'race_type','values':['MAIDEN','DEBUT','OBSTACLE']}]}
+ assert s.segment_mask(df,spec).tolist()==[True,False,False,False]
+
 def test_specialist_adapter_promotes_only_same_population_improvement(tmp_path):
  a=load('research_result_adapter');a.SPECIALIST=tmp_path/'specialist.csv';a.SPECIALIST_MIN_IMPROVEMENT=.0005
  a.SPECIALIST.write_text('brief_id,split_id,target,sample_rows,validation_improvement,selection_improvement\nB1,S1,label_win,1000,0.002,0.003\nB1,S1,label_top2,1000,0.001,0.002\nB1,S1,label_top3,1000,-0.001,0.004\n',encoding='utf-8')
@@ -40,3 +45,8 @@ def test_strategy_outcome_aggregates_all_result_files(tmp_path):
   pd.DataFrame([{'race_id':race,'ticket_type':'WIDE','selection':'1-2','payout_per_100':payout}]).to_csv(e.RESULTS/f'{stem}.csv',index=False)
  e.run_once();out=pd.read_csv(e.OUT);r=out.iloc[0]
  assert int(r['races'])==2;assert int(r['tickets'])==2;assert abs(float(r['ROI'])-1.0)<1e-9;assert int(r['result_files'])==2
+
+def test_lab_updater_does_not_start_idle_on_demand_worker(monkeypatch):
+ u=load('lab_updater');assert 'specialist_research_director.py' in u.ON_DEMAND;called=[]
+ monkeypatch.setattr(u,'current_pid',lambda _s:0);monkeypatch.setattr(u,'alive',lambda _p:False);monkeypatch.setattr(u,'start',lambda n:called.append(n) or 999)
+ assert u.maintain_on_demand('specialist_research_director.py','x.json',False) is None;assert called==[]
