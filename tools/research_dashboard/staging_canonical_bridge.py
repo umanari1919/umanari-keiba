@@ -37,15 +37,13 @@ def base_columns(path):
  con=duckdb.connect()
  try:return [r[0] for r in con.execute(f'DESCRIBE SELECT * FROM read_parquet({lit(path)})' if Path(path).suffix.lower()=='.parquet' else f'DESCRIBE SELECT * FROM read_csv_auto({lit(path)},header=true,sample_size=-1)').fetchall()]
  finally:con.close()
-def source_expr(path):
- return f'read_parquet({lit(path)})' if Path(path).suffix.lower()=='.parquet' else f'read_csv_auto({lit(path)},header=true,sample_size=-1)'
+def source_expr(path):return f'read_parquet({lit(path)})' if Path(path).suffix.lower()=='.parquet' else f'read_csv_auto({lit(path)},header=true,sample_size=-1)'
 def staging_files(root):return sorted(Path(root).glob('year=*/domain=*/*.parquet'))
 def verify_manifest(root,manifest):
  issues=[];files=staging_files(root);part_meta={x.get('file'):x for x in manifest.get('parts',[]) if isinstance(x,dict)}
  if not files:issues.append('NO_STAGING_FILES')
  for p in files:
-  rel=str(p.relative_to(root)).replace('\\','/')
-  meta=part_meta.get(rel)
+  rel=str(p.relative_to(root)).replace('\\','/');meta=part_meta.get(rel)
   if meta is None:issues.append(f'UNMANIFESTED:{rel}');continue
   if meta.get('sha256')!=sha(p):issues.append(f'SHA_MISMATCH:{rel}')
  return issues,files
@@ -66,7 +64,7 @@ def row_signature(cols,prefix=''):
  pieces=[]
  for c in cols:
   ref=f'{prefix}{q(c)}';pieces.append(f"coalesce(cast({ref} as varchar),'∅')")
- return "md5(concat_ws('¦',"+','.join(pieces)+'))'
+ return "md5(concat_ws('¦',"+','.join(pieces)+"))"
 def process_source(root):
  import duckdb
  manifest=load_json(root/'manifest.json') or {};source_id=str(manifest.get('source_id') or root.name)
