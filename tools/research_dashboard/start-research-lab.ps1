@@ -27,7 +27,7 @@ $Workers = @(
     @{File='autonomy_supervisor.py'; Label='Autonomy Supervisor'},
     @{File='lab_updater.py'; Label='Lab Updater'}
 )
-$RequiredModules = @('source_adapter_runtime.py','research_material_engine.py','mission_portfolio.py','canonical_store.py','modern_data_engine.py','modern_contracts.py','experiment_tracking.py','schema_contract_director.py','resource_manager_director.py','leakage_guard_director.py','backup_rollback_director.py','pipeline_orchestrator.py')
+$RequiredModules = @('source_adapter_runtime.py','chunked_source_staging_director.py','research_material_engine.py','mission_portfolio.py','canonical_store.py','modern_data_engine.py','modern_contracts.py','experiment_tracking.py','schema_contract_director.py','resource_manager_director.py','leakage_guard_director.py','backup_rollback_director.py','pipeline_orchestrator.py')
 $Dashboard = Join-Path $Root 'dashboard_server.py'
 foreach ($w in $Workers) { $w.Path = Join-Path $Root $w.File; if (-not (Test-Path $w.Path)) { throw "必要ファイルが見つかりません: $($w.Path)" } }
 foreach ($m in $RequiredModules) { if (-not (Test-Path (Join-Path $Root $m))) { throw "統制/高速化モジュールが見つかりません: $m" } }
@@ -37,31 +37,12 @@ Write-Host '============================================================'
 Write-Host ' THE JOCKEY 完全自律研究所 — PORTFOLIO GOVERNANCE MODE'
 Write-Host '============================================================'
 Write-Host "Research Root : $Root"
-Write-Host ('uv               : ' + $(if (Get-Command uv -ErrorAction SilentlyContinue) { 'AVAILABLE' } else { 'NOT INSTALLED / FALLBACK' }))
-Write-Host 'Foundation Test  : compile / worker coverage / writable dirs'
 Write-Host 'Research Material: evidence-driven automatic discovery'
 Write-Host 'Mission Portfolio: automatic priority / next mission / worker focus'
-Write-Host 'Dependency Guard : stable versions / no auto-upgrade'
 Write-Host 'Source Adapter   : PostgreSQL/MySQL READ-ONLY discovery / NO GUESSING'
-Write-Host 'Data Engine      : DuckDB / Polars / Arrow optional acceleration'
+Write-Host 'Source Staging   : ON-DEMAND / CHUNKED / RESUMABLE / SHA256'
 Write-Host 'Canonical Store  : immutable Parquet / manifest / rollback'
-Write-Host 'Data Contracts   : Pydantic / Pandera optional strengthening'
-Write-Host 'Optuna Advisor   : selection-only TPE / manual fallback'
-Write-Host 'MLflow Mirror    : optional / CSV ledger remains source of truth'
-Write-Host 'Data Control     : source discovery / inventory / canonicalization / reconciliation'
-Write-Host 'Schema Contract  : enforced'
-Write-Host 'Time Splits      : auto-optimized'
-Write-Host 'Research         : portfolio-driven / autonomous / orchestrated'
-Write-Host 'Experiments      : focused TURBO with resource governor'
-Write-Host 'Simulation       : finish distribution / fair odds / FRAME'
-Write-Host 'Strategy         : MIN-1 / MIN-2 / MIN-3; JRA/NAR separated'
-Write-Host 'Failure Analysis : prediction / decision / pruning / variance'
-Write-Host 'Blind Test       : FORWARD / SHA256 SEALED'
-Write-Host 'Leakage Guard    : enforced'
-Write-Host 'Backup           : daily governance snapshot'
 Write-Host 'Chief Operating  : portfolio executive mode'
-Write-Host 'Recovery         : autonomous'
-Write-Host 'Self Update      : enabled'
 Write-Host 'Dashboard        : http://127.0.0.1:8791'
 Write-Host ''
 foreach ($w in $Workers) {
