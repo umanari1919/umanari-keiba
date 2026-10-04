@@ -50,17 +50,19 @@ def enforce_production_hold(status,blockers):
   m['governance_hold']=False;m['governance_blockers']=[];m['governance_updated']=now();writej(path,m)
  return False
 def run_once():
+ import foundation_selftest_director as foundation
  import schema_contract_director as schema
  import resource_manager_director as resource
  import leakage_guard_director as leakage
  import backup_rollback_director as backup
  import pipeline_orchestrator as orchestrator
- s=schema.run_once();r=resource.run_once();l=leakage.run_once();b=backup.run_once();o=orchestrator.run_once(s,l,r);actions=enforce(o,r)
+ f=foundation.run_once();s=schema.run_once();r=resource.run_once();l=leakage.run_once();b=backup.run_once();o=orchestrator.run_once(s,l,r,f);actions=enforce(o,r)
  blockers=[]
+ if f.get('status')=='BLOCKED':blockers.append('FOUNDATION')
  if s.get('status')=='BLOCKED':blockers.append('SCHEMA')
  if l.get('status')=='BLOCKED':blockers.append('LEAKAGE')
- status='BLOCKED' if blockers else ('DEGRADED' if r.get('mode')!='TURBO' or o.get('status')!='PASS' else 'PASS');prod_hold=enforce_production_hold(status,blockers)
- out={'pid':os.getpid(),'updated':now(),'status':status,'blockers':blockers,'actions':actions,'production_hold':prod_hold,'schema':s,'resources':r,'leakage':l,'backup':{'status':b.get('status'),'snapshot':b.get('snapshot'),'items':len(b.get('items',[]))},'orchestration':o}
+ status='BLOCKED' if blockers else ('DEGRADED' if f.get('status')=='WARN' or r.get('mode')!='TURBO' or o.get('status')!='PASS' else 'PASS');prod_hold=enforce_production_hold(status,blockers)
+ out={'pid':os.getpid(),'updated':now(),'status':status,'blockers':blockers,'actions':actions,'production_hold':prod_hold,'foundation':{'status':f.get('status'),'blockers':f.get('blocker_count'),'warnings':f.get('warning_count')},'schema':s,'resources':r,'leakage':l,'backup':{'status':b.get('status'),'snapshot':b.get('snapshot'),'items':len(b.get('items',[]))},'orchestration':o}
  writej(STATE,out);writej(REPORTS/'CHIEF_OPERATING_report.json',out);log(f"CHIEF {status} blockers={blockers} resource={r.get('mode')} orchestration={o.get('status')} actions={actions} prod_hold={prod_hold}");return out
 def main():
  log('CHIEF OPERATING DIRECTOR START')
