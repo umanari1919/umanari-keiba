@@ -2,7 +2,7 @@
 name = "the-jockey-research-lab"
 version = "0.1.0"
 description = "THE JOCKEY governed autonomous horse-racing research lab"
-requires-python = ">=3.11,<3.15"
+requires-python = ">=3.12,<3.15"
 dependencies = []
 
 [project.optional-dependencies]
@@ -35,7 +35,7 @@ dev = [
 package = false
 
 [tool.ruff]
-target-version = "py311"
+target-version = "py312"
 line-length = 120
 extend-exclude = [".venv", "data", "artifacts", "backups"]
 
@@ -47,6 +47,9 @@ ignore = ["E501"]
 addopts = "-ra"
 testpaths = ["tests"]
 
+# The modern-stack environment intentionally requires Python 3.12+ because
+# NumPy 2.5.x dropped Python 3.11. Existing lab scripts may still use older
+# fallback environments, but they are outside this modern uv environment.
 # uv.lock is intentionally not hand-authored. Generate it only on a real machine
 # after `uv sync --extra core --extra research --extra dev` resolves successfully.
 # Model and MLOps extras are isolated so they cannot block the core research lab.
