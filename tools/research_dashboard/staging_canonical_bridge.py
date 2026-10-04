@@ -66,42 +66,27 @@ def canonical_projection_sql(stage_expr,stage_cols,base_cols,contract):
 def row_signature(cols,prefix=''):
  pieces=[]
  for c in cols:
-  ref=f'{prefix}{q(c)}'
-  pieces.append(f"coalesce(cast({ref} as varchar),'∅')")
+  ref=f'{prefix}{q(c)}';pieces.append(f"coalesce(cast({ref} as varchar),'∅')")
  return "md5(concat_ws('¦',"+','.join(pieces)+'))'
 def process_source(root):
  import duckdb
  manifest=load_json(root/'manifest.json') or {};source_id=str(manifest.get('source_id') or root.name)
  if manifest.get('status')!='READY':return {'source_id':source_id,'status':'SKIP','reason':'STAGING_NOT_READY'}
- issues,files=verify_manifest(root,manifest)
+ issues,_=verify_manifest(root,manifest)
  if issues:return {'source_id':source_id,'status':'BLOCKED','reason':'|'.join(issues[:20])}
  cp,contract=contract_for(source_id)
  if not contract:return {'source_id':source_id,'status':'BLOCKED','reason':'CONTRACT_MISSING'}
  if contract.get('enabled') is not True or contract.get('rights_status') not in {'APPROVED','APPROVED_INTERNAL'}:return {'source_id':source_id,'status':'BLOCKED','reason':'CONTRACT_NOT_APPROVED'}
  active=active_source()
  if active is None or not Path(active).exists():return {'source_id':source_id,'status':'WAITING','reason':'ACTIVE_CANONICAL_MISSING'}
- base_cols=base_columns(active)
- glob=str((root/'year=*'/'domain=*'/'*.parquet')).replace('\\','/')
- stage=f'read_parquet({lit(glob)}, union_by_name=true)'
- con=duckdb.connect()
+ base_cols=base_columns(active);glob=str((root/'year=*'/'domain=*'/'*.parquet')).replace('\\','/');stage=f'read_parquet({lit(glob)}, union_by_name=true)';con=duckdb.connect()
  try:
-  stage_cols=[r[0] for r in con.execute(f'DESCRIBE SELECT * FROM {stage}').fetchall()]
-  projected=canonical_projection_sql(stage,stage_cols,base_cols,contract)
-  active_expr=source_expr(active);sig=row_signature(base_cols,'c.');bsig=row_signature(base_cols,'b.')
+  stage_cols=[r[0] for r in con.execute(f'DESCRIBE SELECT * FROM {stage}').fetchall()];projected=canonical_projection_sql(stage,stage_cols,base_cols,contract);active_expr=source_expr(active);sig=row_signature(base_cols,'c.');bsig=row_signature(base_cols,'b.')
   con.execute(f'CREATE TEMP VIEW candidate AS {projected}')
-  counts=con.execute(f'''SELECT
-    count(*) FILTER (WHERE b.race_horse_id IS NULL) AS new_rows,
-    count(*) FILTER (WHERE b.race_horse_id IS NOT NULL AND {sig}={bsig}) AS exact_duplicates,
-    count(*) FILTER (WHERE b.race_horse_id IS NOT NULL AND {sig}<>{bsig}) AS conflicts,
-    count(*) AS total_rows
-    FROM candidate c LEFT JOIN {active_expr} b ON cast(b.race_horse_id as varchar)=cast(c.race_horse_id as varchar)''').fetchone()
-  new_rows,dups,conflicts,total=[int(x or 0) for x in counts]
-  token=hashlib.sha256((source_id+'|'+str(manifest.get('updated'))+'|'+str(total)).encode()).hexdigest()[:12]
-  candidate_path=OUT/f'{source_id}__bridge__{token}.parquet';meta_path=candidate_path.with_suffix('.json');conflict_path=QUAR/f'{source_id}__conflicts__{token}.parquet'
-  if new_rows and not candidate_path.exists():
-   con.execute(f'''COPY (SELECT c.* FROM candidate c LEFT JOIN {active_expr} b ON cast(b.race_horse_id as varchar)=cast(c.race_horse_id as varchar) WHERE b.race_horse_id IS NULL) TO {lit(candidate_path)} (FORMAT PARQUET,COMPRESSION ZSTD)''')
-  if conflicts and not conflict_path.exists():
-   con.execute(f'''COPY (SELECT c.* FROM candidate c JOIN {active_expr} b ON cast(b.race_horse_id as varchar)=cast(c.race_horse_id as varchar) WHERE {sig}<>{bsig}) TO {lit(conflict_path)} (FORMAT PARQUET,COMPRESSION ZSTD)''')
+  counts=con.execute(f'''SELECT count(*) FILTER (WHERE b.race_horse_id IS NULL),count(*) FILTER (WHERE b.race_horse_id IS NOT NULL AND {sig}={bsig}),count(*) FILTER (WHERE b.race_horse_id IS NOT NULL AND {sig}<>{bsig}),count(*) FROM candidate c LEFT JOIN {active_expr} b ON cast(b.race_horse_id as varchar)=cast(c.race_horse_id as varchar)''').fetchone();new_rows,dups,conflicts,total=[int(x or 0) for x in counts]
+  token=hashlib.sha256((source_id+'|'+str(manifest.get('updated'))+'|'+str(total)).encode()).hexdigest()[:12];candidate_path=OUT/f'{source_id}__bridge__{token}.parquet';meta_path=candidate_path.with_suffix('.json');conflict_path=QUAR/f'{source_id}__conflicts__{token}.parquet'
+  if new_rows and not candidate_path.exists():con.execute(f'''COPY (SELECT c.* FROM candidate c LEFT JOIN {active_expr} b ON cast(b.race_horse_id as varchar)=cast(c.race_horse_id as varchar) WHERE b.race_horse_id IS NULL) TO {lit(candidate_path)} (FORMAT PARQUET,COMPRESSION ZSTD)''')
+  if conflicts and not conflict_path.exists():con.execute(f'''COPY (SELECT c.* FROM candidate c JOIN {active_expr} b ON cast(b.race_horse_id as varchar)=cast(c.race_horse_id as varchar) WHERE {sig}<>{bsig}) TO {lit(conflict_path)} (FORMAT PARQUET,COMPRESSION ZSTD)''')
   result={'source_id':source_id,'status':'READY' if new_rows else ('CONFLICT' if conflicts else 'NOOP'),'staged_rows':total,'new_rows':new_rows,'exact_duplicates':dups,'conflicts':conflicts,'candidate':str(candidate_path) if new_rows else None,'candidate_sha256':sha(candidate_path) if new_rows else None,'conflict_artifact':str(conflict_path) if conflicts else None,'contract':str(cp),'active_canonical':str(active),'policy':'new-only candidate; exact duplicates ignored; conflicting existing IDs quarantined; no overwrite'}
   if new_rows:writej(meta_path,{**result,'created_at':now()})
   return result
@@ -110,14 +95,10 @@ def run_once():
  results=[]
  for root in sorted(STAGING.iterdir()) if STAGING.exists() else []:
   if root.is_dir():results.append(process_source(root))
- blocked=sum(x.get('status')=='BLOCKED' for x in results);conflicts=sum(int(x.get('conflicts') or 0) for x in results);new=sum(int(x.get('new_rows') or 0) for x in results)
- status='BLOCKED' if blocked else ('WARN' if conflicts else ('PASS' if results else 'WAITING'))
- out={'pid':os.getpid(),'updated':now(),'status':status,'sources':len(results),'new_rows':new,'conflicts':conflicts,'blocked_sources':blocked,'results':results,'policy':'classify staged rows before reconciliation; only novel IDs become canonical candidates; existing conflicting IDs never auto-overwrite'}
- writej(SUMMARY,out);writej(STATE,out);return out
+ blocked=sum(x.get('status')=='BLOCKED' for x in results);conflicts=sum(int(x.get('conflicts') or 0) for x in results);new=sum(int(x.get('new_rows') or 0) for x in results);status='BLOCKED' if blocked else ('WARN' if conflicts else ('PASS' if results else 'WAITING'));out={'pid':os.getpid(),'updated':now(),'status':status,'sources':len(results),'new_rows':new,'conflicts':conflicts,'blocked_sources':blocked,'results':results,'policy':'classify staged rows before reconciliation; only novel IDs become canonical candidates; existing conflicting IDs never auto-overwrite'};writej(SUMMARY,out);writej(STATE,out);return out
 def main():
  while True:
   try:run_once()
-  except Exception:
-   writej(STATE,{'pid':os.getpid(),'updated':now(),'status':'BLOCKED','detail':traceback.format_exc()[-1800:]})
+  except Exception:writej(STATE,{'pid':os.getpid(),'updated':now(),'status':'BLOCKED','detail':traceback.format_exc()[-1800:]})
   time.sleep(INTERVAL)
 if __name__=='__main__':main()
