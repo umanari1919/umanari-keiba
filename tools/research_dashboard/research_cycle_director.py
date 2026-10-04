@@ -34,6 +34,10 @@ def _experiment_results(brief:dict[str,Any],rows:list[dict[str,str]]):
   s=_float(r.get('selection_logloss'))
   if s is not None:vals.append((s,r))
  vals.sort(key=lambda x:x[0]);return [r for _,r in vals[:20]]
+
+def _brief_results(brief:dict[str,Any],rows:list[dict[str,str]]):
+ return _experiment_results(brief,rows)
+
 def _contract(brief):
  x=readj(RCON,{}) or {};bid=str(brief.get('brief_id') or '');sid=str(brief.get('split_id') or '')
  return next((c for c in x.get('contracts',[]) if str(c.get('brief_id') or '')==bid and str(c.get('split_id') or '')==sid),None)
