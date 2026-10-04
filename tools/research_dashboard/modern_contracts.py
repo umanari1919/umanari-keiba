@@ -1,35 +1,40 @@
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Literal
+
+try:
+    from pydantic import BaseModel, ConfigDict, Field, ValidationError
+
+    class AdapterContract(BaseModel):
+        model_config = ConfigDict(extra="allow")
+        source_id: str = Field(min_length=1)
+        enabled: bool
+        domain: Literal["JRA", "NAR", "MIXED"]
+        provenance: str = Field(min_length=1)
+        rights_status: Literal["APPROVED_INTERNAL", "APPROVED"]
+        column_map: dict[str, str]
+        defaults: dict[str, Any] = Field(default_factory=dict)
+
+    PYDANTIC_AVAILABLE = True
+except Exception:
+    AdapterContract = None
+    ValidationError = Exception
+    PYDANTIC_AVAILABLE = False
 
 
 def validate_adapter_contract(obj: dict[str, Any]) -> tuple[list[str], str]:
     """Optional Pydantic validation. Manual canonicalization gates remain authoritative fallback."""
-    try:
-        from typing import Literal
-        from pydantic import BaseModel, ConfigDict, Field, ValidationError
-
-        class AdapterContract(BaseModel):
-            model_config = ConfigDict(extra="allow")
-            source_id: str = Field(min_length=1)
-            enabled: bool
-            domain: Literal["JRA", "NAR", "MIXED"]
-            provenance: str = Field(min_length=1)
-            rights_status: Literal["APPROVED_INTERNAL", "APPROVED"]
-            column_map: dict[str, str]
-            defaults: dict[str, Any] = Field(default_factory=dict)
-
-        try:
-            AdapterContract.model_validate(obj)
-            return [], "PYDANTIC"
-        except ValidationError as e:
-            issues=[]
-            for x in e.errors(include_url=False):
-                loc=".".join(map(str,x.get("loc",())))
-                issues.append(f"pydantic:{loc}:{x.get('type','invalid')}")
-            return issues, "PYDANTIC"
-    except Exception:
+    if not PYDANTIC_AVAILABLE or AdapterContract is None:
         return [], "MANUAL_FALLBACK"
+    try:
+        AdapterContract.model_validate(obj)
+        return [], "PYDANTIC"
+    except ValidationError as e:
+        issues=[]
+        for x in e.errors(include_url=False):
+            loc=".".join(map(str,x.get("loc",())))
+            issues.append(f"pydantic:{loc}:{x.get('type','invalid')}")
+        return issues, "PYDANTIC"
 
 
 def validate_core003b_frame(df) -> tuple[list[str], str]:
