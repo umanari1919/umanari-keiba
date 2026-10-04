@@ -5,6 +5,7 @@ $Workers = @(
     @{File='foundation_selftest_director.py'; Label='Foundation Self-Test'},
     @{File='dependency_guard.py'; Label='Dependency Guard'},
     @{File='source_adapter_director.py'; Label='Source Adapter Director'},
+    @{File='source_staging_director.py'; Label='Source Staging Director (Portfolio Managed)'},
     @{File='data_inventory_director.py'; Label='Data Inventory Director'},
     @{File='canonicalization_director.py'; Label='Canonicalization Director'},
     @{File='data_reconciliation_director.py'; Label='Data Reconciliation Director'},
@@ -27,7 +28,7 @@ $Workers = @(
     @{File='autonomy_supervisor.py'; Label='Autonomy Supervisor'},
     @{File='lab_updater.py'; Label='Lab Updater'}
 )
-$RequiredModules = @('source_adapter_runtime.py','research_material_engine.py','mission_portfolio.py','canonical_store.py','modern_data_engine.py','modern_contracts.py','experiment_tracking.py','schema_contract_director.py','resource_manager_director.py','leakage_guard_director.py','backup_rollback_director.py','pipeline_orchestrator.py')
+$RequiredModules = @('source_adapter_runtime.py','source_staging_runtime.py','research_material_engine.py','mission_portfolio.py','canonical_store.py','modern_data_engine.py','modern_contracts.py','experiment_tracking.py','schema_contract_director.py','resource_manager_director.py','leakage_guard_director.py','backup_rollback_director.py','pipeline_orchestrator.py')
 $Dashboard = Join-Path $Root 'dashboard_server.py'
 foreach ($w in $Workers) { $w.Path = Join-Path $Root $w.File; if (-not (Test-Path $w.Path)) { throw "必要ファイルが見つかりません: $($w.Path)" } }
 foreach ($m in $RequiredModules) { if (-not (Test-Path (Join-Path $Root $m))) { throw "統制/高速化モジュールが見つかりません: $m" } }
@@ -43,12 +44,13 @@ Write-Host 'Research Material: evidence-driven automatic discovery'
 Write-Host 'Mission Portfolio: automatic priority / next mission / worker focus'
 Write-Host 'Dependency Guard : stable versions / no auto-upgrade'
 Write-Host 'Source Adapter   : PostgreSQL/MySQL READ-ONLY discovery / NO GUESSING'
+Write-Host 'Source Staging   : chunked / resumable / checksum / Parquet / Chief-controlled'
 Write-Host 'Data Engine      : DuckDB / Polars / Arrow optional acceleration'
 Write-Host 'Canonical Store  : immutable Parquet / manifest / rollback'
 Write-Host 'Data Contracts   : Pydantic / Pandera optional strengthening'
 Write-Host 'Optuna Advisor   : selection-only TPE / manual fallback'
 Write-Host 'MLflow Mirror    : optional / CSV ledger remains source of truth'
-Write-Host 'Data Control     : source discovery / inventory / canonicalization / reconciliation'
+Write-Host 'Data Control     : discovery / staging / inventory / canonicalization / reconciliation'
 Write-Host 'Schema Contract  : enforced'
 Write-Host 'Time Splits      : auto-optimized'
 Write-Host 'Research         : portfolio-driven / autonomous / orchestrated'
