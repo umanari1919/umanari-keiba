@@ -8,6 +8,7 @@ $Workers = @(
     @{File='temporal_sample_optimizer.py'; Label='Temporal Optimizer'},
     @{File='universal_model_director.py'; Label='Universal Model Director'},
     @{File='probability_director.py'; Label='Probability Director'},
+    @{File='race_simulation_director.py'; Label='Race Simulation / Fair Odds'},
     @{File='meta_research_director.py'; Label='Meta Research Director'},
     @{File='feature_research_director.py'; Label='Feature Research Director'},
     @{File='experiment_director.py'; Label='Experiment Director'},
@@ -33,6 +34,7 @@ Write-Host 'Data Control    : inventory / reconciliation / schema contract'
 Write-Host 'Time Splits     : auto-optimized'
 Write-Host 'Research        : autonomous / orchestrated'
 Write-Host 'Experiments     : TURBO with resource governor'
+Write-Host 'Simulation      : finish distribution / fair odds / FRAME'
 Write-Host 'Blind Test      : FORWARD / SHA256 SEALED'
 Write-Host 'Leakage Guard   : enforced'
 Write-Host 'Backup          : daily governance snapshot'
