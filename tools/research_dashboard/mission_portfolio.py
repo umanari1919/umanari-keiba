@@ -14,8 +14,8 @@ def readj(p,d=None):
  except Exception:return d
 def score(m:dict[str,Any])->float:
  impact=float(m.get('impact',3));urgency=float(m.get('urgency',3));confidence=float(m.get('confidence',3));cost=max(1.0,float(m.get('cost',2)));risk=max(0.0,float(m.get('risk',1)));base=impact*2.2+urgency*1.8+confidence-cost*0.9-risk*1.1
- if m.get('kind') in {'BLOCKER','STAGING_RECOVERY'}:base+=8
- if m.get('department')=='DATA' and m.get('kind') in {'UNUSED_DATA','SOURCE_CONTRACT','SOURCE_STAGING'}:base+=3
+ if m.get('kind') in {'BLOCKER','STAGING_RECOVERY','BRIDGE_RECOVERY'}:base+=8
+ if m.get('department')=='DATA' and m.get('kind') in {'UNUSED_DATA','SOURCE_CONTRACT','SOURCE_STAGING','CANONICAL_BRIDGE','CANONICAL_CONFLICT'}:base+=3
  return round(base,3)
 def run_once(materials:dict[str,Any]|None=None,resource:dict[str,Any]|None=None,foundation:dict[str,Any]|None=None)->dict[str,Any]:
  materials=materials or readj(REPORTS/'RESEARCH_MATERIAL_queue.json',{}) or {};resource=resource or {};foundation=foundation or {};ranked=[];invalid=[]
