@@ -5,6 +5,7 @@ import sys
 from pathlib import Path
 
 import pandas as pd
+import pytest
 
 ROOT = Path(__file__).resolve().parents[1]
 LAB = ROOT / "tools" / "research_dashboard"
@@ -145,6 +146,51 @@ def test_immutable_canonical_store_rejects_malformed_label(tmp_path):
     audit = mod.validate_dataset(bad)
     assert audit["status"] == "BLOCKED"
     assert any(x.startswith("invalid_win:") for x in audit["issues"])
+
+
+def test_source_adapter_requires_contract_instead_of_guessing():
+    mod = load("source_adapter_runtime")
+    unknown = mod.assess_table(["racekey", "horsekey", "ymd", "result"])
+    assert unknown["status"] == "NEEDS_CONTRACT"
+    assert unknown["exact_required_coverage"] == 0
+
+    exact_cols = sorted(mod.CANONICAL_REQUIRED)
+    exact = mod.assess_table(exact_cols)
+    assert exact["status"] == "EXACT_CANONICAL_CANDIDATE"
+
+
+def test_source_adapter_contract_mapping_drives_coverage_sql():
+    mod = load("source_adapter_runtime")
+    contract = {
+        "source_id": "TEST_DB",
+        "column_map": {
+            "source_race": "race_id",
+            "source_runner": "race_horse_id",
+            "source_horse": "horse_id",
+            "source_date": "race_date",
+            "source_scope": "race_scope_cd",
+            "source_win": "label_win",
+            "source_top2": "label_top2",
+            "source_top3": "label_top3",
+        },
+        "source": {"engine": "POSTGRES", "database": "db", "schema": "public", "table": "runners"},
+    }
+    assessment = mod.assess_table(list(contract["column_map"]), contract)
+    assert assessment["status"] == "CONTRACT_READY"
+    sql, selected = mod.build_year_coverage_query("POSTGRES", "public", "runners", contract)
+    assert "source_date" in sql
+    assert "source_race" in sql
+    assert "SELECT *" not in sql.upper()
+    assert set(selected) == {"source_date", "source_race", "source_runner", "source_win"}
+    assert mod.contract_table_binding(contract) == ("public", "runners")
+
+
+def test_source_adapter_rejects_unsafe_identifiers():
+    mod = load("source_adapter_runtime")
+    with pytest.raises(ValueError):
+        mod.quote_ident("POSTGRES", "public; drop table x")
+    with pytest.raises(ValueError):
+        mod.qualified_table("MYSQL", "db", "table-name")
 
 
 def test_research_lab_python_files_parse():
