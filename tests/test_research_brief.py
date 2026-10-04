@@ -32,12 +32,18 @@ def test_brief_freezes_test_oos_as_report_only():
     assert out['temporal_policy']['test_oos_feedback_prohibited'] is True
     assert 'selection_logloss' in out['evaluation_metrics']
 
-def test_specialist_brief_has_contract_gate():
+def test_specialist_brief_has_contract_gate_and_specialist_route():
     b=load('research_brief_director')
     idea={'key':'obstacle','title':'障害戦研究','kind':'OBSTACLE_SPECIALIST','status':'READY','required_columns':['obstacle_flag'],'evidence':{},'worker':'domain_research_director'}
     out=b.build_brief(idea,temporal_plan())
-    assert out['execution_worker']=='domain_research_director'
-    assert 'Contract' in out['specialist_rule']
+    assert out['execution_worker']=='specialist_research_director'
+    assert 'specialist_segments.json' in out['specialist_rule']
+    assert 'baseline_selection_logloss' in out['evaluation_metrics']
+
+def test_nar_transfer_is_specialist_route():
+    b=load('research_brief_director')
+    idea={'key':'nar-transfer','title':'NAR転入','kind':'NAR_TRANSFER_SPECIALIST','status':'READY','required_columns':['transfer_origin_cd'],'evidence':{},'worker':'specialist_research_director'}
+    out=b.build_brief(idea,temporal_plan());assert out['execution_worker']=='specialist_research_director';assert 'NAR転入' in out['population']
 
 def test_small_ticket_brief_uses_bankroll_metrics():
     b=load('research_brief_director')

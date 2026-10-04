@@ -34,7 +34,7 @@ def start_worker(name):
   p=subprocess.Popen([sys.executable,str(script)],cwd=str(ROOT),stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL,creationflags=flags,env={**os.environ,'THE_JOCKEY_RESEARCH_ROOT':str(ROOT)});log(f'CHIEF START {name} pid={p.pid}');return True
  except Exception as e:log(f'CHIEF START FAILED {name}: {e!r}');return False
 def enforce(o,r,portfolio):
- actions=[];hold={x['worker'] for x in o.get('steps',[]) if x.get('desired')=='HOLD'};desired=set(portfolio.get('desired_workers',[]));costly={'chunked_source_staging_director','staging_canonical_bridge','conflict_resolution_director','feature_research_director','experiment_director','hypothesis_generator','domain_research_director','ensemble_director','decision_strategy_director'}
+ actions=[];hold={x['worker'] for x in o.get('steps',[]) if x.get('desired')=='HOLD'};desired=set(portfolio.get('desired_workers',[]));costly={'chunked_source_staging_director','staging_canonical_bridge','conflict_resolution_director','feature_research_director','experiment_director','hypothesis_generator','domain_research_director','specialist_research_director','ensemble_director','decision_strategy_director'}
  for n in costly:
   if n in hold or n not in desired or r.get('mode')=='PAUSE_EXPERIMENTS':
    if stop_worker(n):actions.append(f'STOP:{n}')
@@ -55,21 +55,22 @@ def run_once():
  import research_factory_director as research_factory
  import research_brief_director as research_brief
  import research_model_search_seed as model_search_seed
+ import strategy_outcome_evaluator as strategy_outcome
  import research_result_adapter as result_adapter
  import research_cycle_director as research_cycle
  import research_cycle_material as cycle_material
  import research_execution_binding as execution_binding
  import research_material_engine as material_engine
  import mission_portfolio as portfolio_engine
- f=foundation.run_once();s=schema.run_once();r=resource.run_once();l=leakage.run_once();b=backup.run_once();factory=research_factory.run_once();briefs=model_search_seed.augment(research_brief.run_once());adapted=result_adapter.build();cycle=research_cycle.run_once();materials=cycle_material.inject(material_engine.run_once(),cycle);portfolio=portfolio_engine.run_once(materials,r,f);bindings=execution_binding.build(portfolio,briefs);o=orchestrator.run_once(s,l,r,f,portfolio);actions=enforce(o,r,portfolio);blockers=[]
+ f=foundation.run_once();s=schema.run_once();r=resource.run_once();l=leakage.run_once();b=backup.run_once();factory=research_factory.run_once();briefs=model_search_seed.augment(research_brief.run_once());strategy_outcome.run_once();adapted=result_adapter.build();cycle=research_cycle.run_once();materials=cycle_material.inject(material_engine.run_once(),cycle);portfolio=portfolio_engine.run_once(materials,r,f);bindings=execution_binding.build(portfolio,briefs);o=orchestrator.run_once(s,l,r,f,portfolio);actions=enforce(o,r,portfolio);blockers=[]
  if f.get('status')=='BLOCKED':blockers.append('FOUNDATION')
  if s.get('status')=='BLOCKED':blockers.append('SCHEMA')
  if l.get('status')=='BLOCKED':blockers.append('LEAKAGE')
  status='BLOCKED' if blockers else ('DEGRADED' if f.get('status')=='WARN' or r.get('mode')!='TURBO' or o.get('status') not in {'PASS','FOCUSED'} else 'PASS');prod_hold=enforce_production_hold(status,blockers)
- out={'pid':os.getpid(),'updated':now(),'status':status,'blockers':blockers,'actions':actions,'production_hold':prod_hold,'next_mission':portfolio.get('next_mission'),'portfolio_mode':portfolio.get('mode'),'active_missions':portfolio.get('active_missions',[]),'research_material_count':materials.get('count',0),'research_factory':{'status':factory.get('status'),'ideas':factory.get('ideas'),'ready':factory.get('ready'),'needs_data':factory.get('needs_data')},'research_briefs':{'status':briefs.get('status'),'count':briefs.get('count') or briefs.get('briefs'),'split_id':briefs.get('split_id')},'result_contracts':adapted.get('count',0),'research_cycle':{'status':cycle.get('status'),'count':cycle.get('count'),'promote_candidates':sum(d.get('status')=='PROMOTE_CANDIDATE' for d in cycle.get('decisions',[])),'next_hypothesis':sum(d.get('action')=='GENERATE_NEXT_HYPOTHESIS' for d in cycle.get('decisions',[])),'capability_gaps':sum(d.get('status')=='CAPABILITY_GAP' for d in cycle.get('decisions',[]))},'execution_bindings':bindings,'foundation':{'status':f.get('status'),'blockers':f.get('blocker_count'),'warnings':f.get('warning_count')},'schema':s,'resources':r,'leakage':l,'backup':{'status':b.get('status'),'snapshot':b.get('snapshot'),'items':len(b.get('items',[]))},'orchestration':o}
+ out={'pid':os.getpid(),'updated':now(),'status':status,'blockers':blockers,'actions':actions,'production_hold':prod_hold,'next_mission':portfolio.get('next_mission'),'portfolio_mode':portfolio.get('mode'),'active_missions':portfolio.get('active_missions',[]),'research_material_count':materials.get('count',0),'research_factory':{'status':factory.get('status'),'ideas':factory.get('ideas'),'ready':factory.get('ready'),'needs_data':factory.get('needs_data')},'research_briefs':{'status':briefs.get('status'),'count':briefs.get('count') or briefs.get('briefs'),'split_id':briefs.get('split_id')},'result_contracts':adapted.get('count',0),'research_cycle':{'status':cycle.get('status'),'count':cycle.get('count'),'promote_candidates':sum(d.get('status')=='PROMOTE_CANDIDATE' for d in cycle.get('decisions',[])),'next_hypothesis':sum(d.get('action')=='GENERATE_NEXT_HYPOTHESIS' for d in cycle.get('decisions',[])),'capability_gaps':sum(d.get('status')=='CAPABILITY_GAP' for d in cycle.get('decisions',[]))},'execution_bindings':bindings,'strategy_outcome':readj(CHECK/'strategy_outcome_evaluator_state.json',{}) or {},'specialist':readj(CHECK/'specialist_research_director_state.json',{}) or {},'foundation':{'status':f.get('status'),'blockers':f.get('blocker_count'),'warnings':f.get('warning_count')},'schema':s,'resources':r,'leakage':l,'backup':{'status':b.get('status'),'snapshot':b.get('snapshot'),'items':len(b.get('items',[]))},'orchestration':o}
  writej(STATE,out);writej(REPORTS/'CHIEF_OPERATING_report.json',out);log(f"CHIEF {status} next={portfolio.get('next_mission',{}).get('key')} mode={portfolio.get('mode')} briefs={briefs.get('count') or briefs.get('briefs')} results={adapted.get('count')} cycle={cycle.get('count')} bindings={bindings.get('count')} resource={r.get('mode')} actions={actions}");return out
 def main():
- log('CHIEF OPERATING DIRECTOR START v8 UNIFIED RESEARCH LOOP MODE')
+ log('CHIEF OPERATING DIRECTOR START v9 SPECIALIST + REALIZED OUTCOME MODE')
  while True:
   try:run_once()
   except Exception:
