@@ -2,8 +2,8 @@ from __future__ import annotations
 import json,os,subprocess,sys,time,traceback
 from datetime import datetime
 from pathlib import Path
-ROOT=Path(os.environ.get('THE_JOCKEY_RESEARCH_ROOT',Path.home()/'Downloads'/'THE-JOCKEY-RESEARCH'));CHECK=ROOT/'checkpoints';REPORTS=ROOT/'CORE'/'reports';LOG=ROOT/'logs'/'chief_operating_director.log';STATE=CHECK/'chief_operating_director_state.json';INTERVAL=max(30,int(os.environ.get('THE_JOCKEY_CHIEF_INTERVAL','60')))
-for p in (CHECK,REPORTS,LOG.parent):p.mkdir(parents=True,exist_ok=True)
+ROOT=Path(os.environ.get('THE_JOCKEY_RESEARCH_ROOT',Path.home()/'Downloads'/'THE-JOCKEY-RESEARCH'));CHECK=ROOT/'checkpoints';REPORTS=ROOT/'CORE'/'reports';PROD=ROOT/'production';LOG=ROOT/'logs'/'chief_operating_director.log';STATE=CHECK/'chief_operating_director_state.json';INTERVAL=max(30,int(os.environ.get('THE_JOCKEY_CHIEF_INTERVAL','60')))
+for p in (CHECK,REPORTS,PROD,LOG.parent):p.mkdir(parents=True,exist_ok=True)
 def now():return datetime.now().astimezone().isoformat()
 def readj(p,d=None):
  try:return json.loads(p.read_text(encoding='utf-8-sig'))
@@ -41,6 +41,14 @@ def enforce(o,r):
   elif r.get('mode')!='PAUSE_EXPERIMENTS':
    if start_worker(n):actions.append(f'START:{n}')
  return actions
+def enforce_production_hold(status,blockers):
+ path=PROD/'production_manifest.json';m=readj(path,{}) or {}
+ if status=='BLOCKED':
+  m.update({'status':'HOLD','governance_hold':True,'governance_blockers':blockers,'governance_updated':now(),'auto_betting':False})
+  writej(path,m);return True
+ if m.get('governance_hold'):
+  m['governance_hold']=False;m['governance_blockers']=[];m['governance_updated']=now();writej(path,m)
+ return False
 def run_once():
  import schema_contract_director as schema
  import resource_manager_director as resource
@@ -51,9 +59,9 @@ def run_once():
  blockers=[]
  if s.get('status')=='BLOCKED':blockers.append('SCHEMA')
  if l.get('status')=='BLOCKED':blockers.append('LEAKAGE')
- status='BLOCKED' if blockers else ('DEGRADED' if r.get('mode')!='TURBO' or o.get('status')!='PASS' else 'PASS')
- out={'pid':os.getpid(),'updated':now(),'status':status,'blockers':blockers,'actions':actions,'schema':s,'resources':r,'leakage':l,'backup':{'status':b.get('status'),'snapshot':b.get('snapshot'),'items':len(b.get('items',[]))},'orchestration':o}
- writej(STATE,out);writej(REPORTS/'CHIEF_OPERATING_report.json',out);log(f"CHIEF {status} blockers={blockers} resource={r.get('mode')} orchestration={o.get('status')} actions={actions}");return out
+ status='BLOCKED' if blockers else ('DEGRADED' if r.get('mode')!='TURBO' or o.get('status')!='PASS' else 'PASS');prod_hold=enforce_production_hold(status,blockers)
+ out={'pid':os.getpid(),'updated':now(),'status':status,'blockers':blockers,'actions':actions,'production_hold':prod_hold,'schema':s,'resources':r,'leakage':l,'backup':{'status':b.get('status'),'snapshot':b.get('snapshot'),'items':len(b.get('items',[]))},'orchestration':o}
+ writej(STATE,out);writej(REPORTS/'CHIEF_OPERATING_report.json',out);log(f"CHIEF {status} blockers={blockers} resource={r.get('mode')} orchestration={o.get('status')} actions={actions} prod_hold={prod_hold}");return out
 def main():
  log('CHIEF OPERATING DIRECTOR START')
  while True:
