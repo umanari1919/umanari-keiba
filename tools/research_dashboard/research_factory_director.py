@@ -53,29 +53,16 @@ def build_ideas(cols:set[str])->list[dict[str,Any]]:
   ('jra-nar-domain-gap','JRA/NARで特徴量の効き方が違うか検証','DOMAIN_GAP',['race_scope_cd','label_win','label_top2','label_top3'],5,'同一特徴量のDomain別安定性を比較する。'),
  ]
  for k,t,kind,req,impact,note in templates:ideas.append(idea(k,t,kind,req,base,'domain_research_director' if kind=='DOMAIN_GAP' else 'feature_research_director',impact,4,note))
- # JRA morning / debut / obstacle are only researchable when the dataset exposes explicit segmentation columns.
- morning_candidates=[c for c in ('race_number','race_no','post_time','start_time') if c in cols]
- class_candidates=[c for c in ('race_class','race_name','race_type','condition_code') if c in cols]
- obstacle_candidates=[c for c in ('surface','track_type','obstacle_flag') if c in cols]
- evidence={**base,'detected_time_columns':morning_candidates,'detected_class_columns':class_candidates,'detected_obstacle_columns':obstacle_candidates}
- req=['race_scope_cd','label_win']
- if morning_candidates:req.append(morning_candidates[0])
- else:req.append('__JRA_MORNING_SEGMENT_COLUMN__')
- if class_candidates:req.append(class_candidates[0])
- else:req.append('__RACE_CLASS_COLUMN__')
- ideas.append(idea('jra-morning-capital','JRA午前の資金形成仮説をデータ検証','JRA_MORNING',req,evidence,'domain_research_director',5,4,'未勝利・新馬・障害を固定的に有利とみなさず、時間帯×レース種別の差を検証する。'))
- req=['race_scope_cd','label_win']
- if class_candidates:req.append(class_candidates[0])
- else:req.append('__RACE_CLASS_COLUMN__')
- ideas.append(idea('debut-specialist','新馬・初出走専用モデルの成立条件を研究','DEBUT_SPECIALIST',req+['prior_start_count'],evidence,'domain_research_director',4,3,'新馬判定列が無い場合は先にデータ契約を要求する。'))
- req=['race_scope_cd','label_win']
- if obstacle_candidates:req.append(obstacle_candidates[0])
- else:req.append('__OBSTACLE_SEGMENT_COLUMN__')
- ideas.append(idea('obstacle-specialist','障害戦専用モデルの成立条件を研究','OBSTACLE_SPECIALIST',req,evidence,'domain_research_director',4,3,'障害を明示識別できないデータでは実験しない。'))
+ morning_candidates=[c for c in ('race_number','race_no','post_time','start_time') if c in cols];class_candidates=[c for c in ('race_class','race_name','race_type','condition_code') if c in cols];obstacle_candidates=[c for c in ('surface','track_type','obstacle_flag') if c in cols];transfer_candidates=[c for c in ('previous_race_scope_cd','last_race_scope_cd','transfer_origin_cd','previous_association_cd') if c in cols]
+ evidence={**base,'detected_time_columns':morning_candidates,'detected_class_columns':class_candidates,'detected_obstacle_columns':obstacle_candidates,'detected_transfer_columns':transfer_candidates}
+ req=['race_scope_cd','label_win'];req.append(morning_candidates[0] if morning_candidates else '__JRA_MORNING_SEGMENT_COLUMN__');req.append(class_candidates[0] if class_candidates else '__RACE_CLASS_COLUMN__')
+ ideas.append(idea('jra-morning-capital','JRA午前の資金形成仮説をデータ検証','JRA_MORNING',req,evidence,'specialist_research_director',5,4,'未勝利・新馬・障害を固定的に有利とみなさず、時間帯×レース種別を明示契約で検証する。'))
+ req=['race_scope_cd','label_win',class_candidates[0] if class_candidates else '__RACE_CLASS_COLUMN__','prior_start_count'];ideas.append(idea('debut-specialist','新馬・初出走専用モデルの成立条件を研究','DEBUT_SPECIALIST',req,evidence,'specialist_research_director',4,3,'新馬判定列が無い場合は先にデータ契約を要求する。'))
+ req=['race_scope_cd','label_win',obstacle_candidates[0] if obstacle_candidates else '__OBSTACLE_SEGMENT_COLUMN__'];ideas.append(idea('obstacle-specialist','障害戦専用モデルの成立条件を研究','OBSTACLE_SPECIALIST',req,evidence,'specialist_research_director',4,3,'障害を明示識別できないデータでは実験しない。'))
+ req=['race_scope_cd','label_win',transfer_candidates[0] if transfer_candidates else '__TRANSFER_ORIGIN_COLUMN__'];ideas.append(idea('nar-transfer-specialist','NAR転入馬の相手関係・能力補正を研究','NAR_TRANSFER_SPECIALIST',req,evidence,'specialist_research_director',5,4,'JRA→NARや地区間転入を名称から推測せず、転入元を明示する契約列だけで研究する。'))
  strategy=readj(REPORTS/'DECISION_STRATEGY_summary.json',{}) or {}
  if strategy:
-  ev={**base,'strategy_report':'DECISION_STRATEGY_summary.json','strategy_status':strategy.get('status')}
-  ideas.append(idea('small-ticket-efficiency','MIN-1 / MIN-2 / MIN-3の資金効率を比較','SMALL_TICKET',[],ev,'decision_strategy_director',5,5,'同じ予測snapshot上で点数差だけを比較する。'))
+  ev={**base,'strategy_report':'DECISION_STRATEGY_summary.json','strategy_status':strategy.get('status')};ideas.append(idea('small-ticket-efficiency','MIN-1 / MIN-2 / MIN-3の資金効率を比較','SMALL_TICKET',[],ev,'decision_strategy_director',5,5,'同じ予測snapshot・市場snapshotで点数差を比較し、最終評価は実払戻だけで行う。'))
  failures=readj(REPORTS/'FAILURE_ANALYSIS_summary.json',{}) or {};counts=failures.get('reason_counts') or failures.get('counts') or {}
  if isinstance(counts,dict):
   for reason,count in sorted(counts.items(),key=lambda x:x[1] if isinstance(x[1],(int,float)) else 0,reverse=True)[:5]:
@@ -86,8 +73,7 @@ def build_ideas(cols:set[str])->list[dict[str,Any]]:
  if promoted:ideas.append({'key':'promoted-feature-interactions','title':'昇格特徴量どうしの相互作用を研究','kind':'FEATURE_INTERACTION','status':'READY','required_columns':promoted[:12],'missing_columns':[],'evidence':{'source':'feature_research_catalog.csv','promoted_features':promoted[:12]},'worker':'feature_research_director','impact':4,'confidence':4,'notes':'TEST/OOSは最適化に使わず後段評価のみ。'})
  return ideas
 def run_once():
- cols=columns(BASE);items=build_ideas(cols);ready=[x for x in items if x['status']=='READY'];needs=[x for x in items if x['status']=='NEEDS_DATA']
- items.sort(key=lambda x:(x['status']!='READY',-int(x.get('impact',0)),-int(x.get('confidence',0)),x['key']))
+ cols=columns(BASE);items=build_ideas(cols);ready=[x for x in items if x['status']=='READY'];needs=[x for x in items if x['status']=='NEEDS_DATA'];items.sort(key=lambda x:(x['status']!='READY',-int(x.get('impact',0)),-int(x.get('confidence',0)),x['key']))
  writej(IDEAS,{'updated':now(),'source':str(BASE),'available_column_count':len(cols),'ready_count':len(ready),'needs_data_count':len(needs),'ideas':items,'policy':'Ideas are evidence-gated. Unsupported segmentation becomes NEEDS_DATA, never an assumed horse-racing fact.'})
  if items:
   keys=['key','title','kind','status','impact','confidence','worker','missing_columns','notes']
