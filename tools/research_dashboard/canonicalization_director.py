@@ -1,0 +1,101 @@
+from __future__ import annotations
+
+import hashlib,json,os,time,traceback
+from datetime import datetime
+from pathlib import Path
+import pandas as pd
+
+ROOT=Path(os.environ.get('THE_JOCKEY_RESEARCH_ROOT',Path.home()/'Downloads'/'THE-JOCKEY-RESEARCH'))
+CORE=ROOT/'CORE';DATA=CORE/'data';REPORTS=CORE/'reports';CHECK=ROOT/'checkpoints';LOG=ROOT/'logs'/'canonicalization_director.log'
+CONTRACTS=CORE/'contracts'/'source_adapters';INBOX=ROOT/'canonicalization'/'inbox';OUT=ROOT/'canonicalization'/'outbox'
+STATE=CHECK/'canonicalization_director_state.json';SUMMARY=REPORTS/'CANONICALIZATION_summary.json';LEDGER=REPORTS/'CANONICALIZATION_ledger.csv'
+INTERVAL=max(120,int(os.environ.get('THE_JOCKEY_CANONICALIZATION_INTERVAL','600')))
+REQUIRED={'race_id','race_horse_id','horse_id','race_date','race_scope_cd','label_win','label_top2','label_top3'}
+for p in (CONTRACTS,INBOX,OUT,REPORTS,CHECK,LOG.parent):p.mkdir(parents=True,exist_ok=True)
+
+def now():return datetime.now().astimezone().isoformat()
+def writej(p,o):
+ t=p.with_suffix(p.suffix+'.tmp');t.write_text(json.dumps(o,ensure_ascii=False,indent=2),encoding='utf-8');t.replace(p)
+def log(s):
+ line=f'[{now()}] {s}';print(line,flush=True)
+ with LOG.open('a',encoding='utf-8') as f:f.write(line+'\n')
+def state(status,detail='',extra=None):
+ x={'pid':os.getpid(),'updated':now(),'status':status,'detail':detail}
+ if extra:x.update(extra)
+ writej(STATE,x)
+def sha(p):
+ h=hashlib.sha256()
+ with p.open('rb') as f:
+  for b in iter(lambda:f.read(1024*1024),b''):h.update(b)
+ return h.hexdigest()
+def contracts():
+ out={}
+ for p in CONTRACTS.glob('*.json'):
+  try:
+   x=json.loads(p.read_text(encoding='utf-8-sig')); sid=str(x.get('source_id') or p.stem)
+   out[sid]=(p,x)
+  except Exception:continue
+ return out
+def validate_contract(x):
+ issues=[]
+ if not x.get('source_id'):issues.append('missing_source_id')
+ if x.get('enabled') is not True:issues.append('not_enabled')
+ m=x.get('column_map') or {}
+ if not isinstance(m,dict):issues.append('column_map_not_object');m={}
+ if not REQUIRED.issubset(set(m.values())):issues.append('required_canonical_fields_not_mapped')
+ if x.get('domain') not in {'JRA','NAR','MIXED'}:issues.append('invalid_domain')
+ if not x.get('provenance'):issues.append('missing_provenance')
+ if x.get('rights_status') not in {'APPROVED_INTERNAL','APPROVED'}:issues.append('rights_not_approved')
+ return issues
+def canonicalize(path,contract):
+ issues=validate_contract(contract)
+ if issues:return None,issues
+ src=pd.read_csv(path,low_memory=False);mapping=contract['column_map'];missing=[c for c in mapping if c not in src.columns]
+ if missing:return None,[f'missing_source_columns:{missing[:20]}']
+ keep=list(mapping.keys());df=src[keep].rename(columns=mapping).copy()
+ defaults=contract.get('defaults') or {}
+ for k,v in defaults.items():
+  if k not in df:df[k]=v
+ # strict canonical gates
+ if not REQUIRED.issubset(df.columns):return None,['canonical_required_missing']
+ df['race_date']=pd.to_datetime(df.race_date,errors='coerce').dt.strftime('%Y-%m-%d')
+ if df.race_date.isna().any():issues.append('invalid_race_date')
+ scope=pd.to_numeric(df.race_scope_cd,errors='coerce')
+ if (~scope.isin([1,2])).any():issues.append('invalid_race_scope_cd')
+ if df.race_horse_id.isna().any() or df.race_horse_id.astype(str).duplicated().any():issues.append('invalid_or_duplicate_race_horse_id')
+ for c in ['label_win','label_top2','label_top3']:
+  y=pd.to_numeric(df[c],errors='coerce')
+  if y.isna().any() or (~y.isin([0,1])).any():issues.append(f'invalid_{c}')
+ if not issues:
+  a=pd.to_numeric(df.label_win);b=pd.to_numeric(df.label_top2);c=pd.to_numeric(df.label_top3)
+  if ((a>b)|(b>c)).any():issues.append('label_monotonicity_violation')
+ return (df if not issues else None),issues
+def append_ledger(rows):
+ if rows:pd.DataFrame(rows).to_csv(LEDGER,mode='a',header=not LEDGER.exists(),index=False,encoding='utf-8-sig')
+def run_once():
+ cs=contracts();rows=[]
+ for p in sorted(INBOX.glob('*.csv')):
+  side=p.with_suffix('.source.json')
+  if not side.exists():rows.append({'updated':now(),'source':str(p),'status':'QUARANTINED','reason':'MISSING_SOURCE_DESCRIPTOR'});continue
+  try:desc=json.loads(side.read_text(encoding='utf-8-sig'));sid=str(desc.get('source_id') or '')
+  except Exception as e:rows.append({'updated':now(),'source':str(p),'status':'QUARANTINED','reason':f'BAD_SOURCE_DESCRIPTOR:{e!r}'});continue
+  if sid not in cs:rows.append({'updated':now(),'source':str(p),'source_id':sid,'status':'QUARANTINED','reason':'UNREGISTERED_SOURCE'});continue
+  cp,contract=cs[sid];df,issues=canonicalize(p,contract)
+  if issues:rows.append({'updated':now(),'source':str(p),'source_id':sid,'status':'QUARANTINED','reason':'|'.join(map(str,issues))});continue
+  source_sig=sha(p);dest=OUT/f'{sid}__{source_sig[:12]}__canonical.csv';meta=dest.with_suffix('.json')
+  if not dest.exists():
+   tmp=dest.with_suffix('.tmp');df.to_csv(tmp,index=False,encoding='utf-8-sig');tmp.replace(dest)
+   writej(meta,{'status':'CANONICAL_STAGED','created_at':now(),'source_id':sid,'source_file':str(p),'source_sha256':source_sig,'contract_file':str(cp),'contract_sha256':sha(cp),'rows':len(df),'races':int(df.race_id.nunique()),'policy':'versioned staging only; no raw overwrite; reconciliation decides promotion'})
+  rows.append({'updated':now(),'source':str(p),'source_id':sid,'status':'STAGED','rows':len(df),'races':int(df.race_id.nunique()),'output':str(dest)})
+ append_ledger(rows)
+ blocked=sum(r['status']=='QUARANTINED' for r in rows);staged=sum(r['status']=='STAGED' for r in rows)
+ out={'updated':now(),'status':'WARN' if blocked else 'PASS','registered_contracts':len(cs),'staged':staged,'quarantined':blocked,'processed':rows,'policy':'Only explicitly registered + rights-approved + schema-mapped sources are canonicalized. No source schema guessing.'}
+ writej(SUMMARY,out);state(out['status'],'canonicalization scan complete',out);return out
+def main():
+ log('CANONICALIZATION DIRECTOR START')
+ while True:
+  try:run_once()
+  except Exception:
+   err=traceback.format_exc();log(err);state('BLOCKED',err[-1800:])
+  time.sleep(INTERVAL)
+if __name__=='__main__':main()
