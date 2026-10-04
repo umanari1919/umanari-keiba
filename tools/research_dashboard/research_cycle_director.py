@@ -26,19 +26,18 @@ def _float(v):
  try:return float(v)
  except Exception:return None
 def _brief_results(brief:dict[str,Any],rows:list[dict[str,str]]):
- sid=str(brief.get('split_id') or '');worker=str(brief.get('execution_worker') or '');kind=str(brief.get('kind') or '')
- scoped=[r for r in rows if str(r.get('split_id') or '')==sid]
- if worker=='experiment_director' or kind in {'FIELD_STRENGTH','FORM_MOMENTUM','FIRST_START','DISTANCE','TRACK','FEATURE_INTERACTION','FAILURE_DERIVED'}:
-  vals=[]
-  for r in scoped:
-   s=_float(r.get('selection_logloss'))
-   if s is not None:vals.append((s,r))
-  vals.sort(key=lambda x:x[0]);return [r for _,r in vals[:20]]
- return []
+ sid=str(brief.get('split_id') or '');bid=str(brief.get('brief_id') or '')
+ if not bid:return []
+ scoped=[r for r in rows if str(r.get('split_id') or '')==sid and str(r.get('brief_id') or '')==bid]
+ vals=[]
+ for r in scoped:
+  s=_float(r.get('selection_logloss'))
+  if s is not None:vals.append((s,r))
+ vals.sort(key=lambda x:x[0]);return [r for _,r in vals[:20]]
 def _decision(brief:dict[str,Any],results:list[dict[str,str]]):
  kind=str(brief.get('kind') or '')
  base={'brief_id':brief.get('brief_id'),'idea_key':brief.get('idea_key'),'kind':kind,'split_id':brief.get('split_id'),'execution_worker':brief.get('execution_worker'),'updated':now(),'test_oos_used_for_decision':False}
- if not results:return {**base,'status':'WAITING_RESULT','action':'KEEP_RUNNING','reason':'NO_DECISION_SPLIT_RESULT'}
+ if not results:return {**base,'status':'WAITING_BINDING','action':'KEEP_RUNNING','reason':'NO_EXPLICIT_BRIEF_BOUND_RESULT'}
  if kind=='SMALL_TICKET':return {**base,'status':'WAITING_RESULT','action':'KEEP_RUNNING','reason':'STRATEGY_RESULT_ADAPTER_NOT_YET_AVAILABLE'}
  promoted=[r for r in results if str(r.get('status','')).upper()=='PROMOTE']
  kept=[r for r in results if str(r.get('status','')).upper()=='KEEP']
@@ -54,8 +53,8 @@ def run_once():
  for brief in q.get('briefs',[]):
   if not isinstance(brief,dict) or brief.get('status')!='READY_FOR_EXECUTION':continue
   results=_brief_results(brief,rows);decisions.append(_decision(brief,results))
- payload={'updated':now(),'status':'PASS' if decisions else 'WAITING','count':len(decisions),'decisions':decisions,'policy':{'decision_feedback':['TRAIN','VALIDATION','SELECTION'],'test_oos_report_only':True,'same_epoch_test_oos_feedback_prohibited':True,'blind_feedback_same_epoch_prohibited':True}}
- writej(DECISIONS,payload);summary={'pid':os.getpid(),'updated':now(),'status':payload['status'],'decisions':len(decisions),'promote_candidates':sum(d.get('status')=='PROMOTE_CANDIDATE' for d in decisions),'next_hypothesis':sum(d.get('action')=='GENERATE_NEXT_HYPOTHESIS' for d in decisions),'blind_ready':sum(d.get('action')=='PREPARE_FORWARD_BLIND' for d in decisions)};writej(OUT,summary);writej(STATE,summary);return payload
+ payload={'updated':now(),'status':'PASS' if decisions else 'WAITING','count':len(decisions),'decisions':decisions,'policy':{'explicit_brief_binding_required':True,'decision_feedback':['TRAIN','VALIDATION','SELECTION'],'test_oos_report_only':True,'same_epoch_test_oos_feedback_prohibited':True,'blind_feedback_same_epoch_prohibited':True}}
+ writej(DECISIONS,payload);summary={'pid':os.getpid(),'updated':now(),'status':payload['status'],'decisions':len(decisions),'promote_candidates':sum(d.get('status')=='PROMOTE_CANDIDATE' for d in decisions),'next_hypothesis':sum(d.get('action')=='GENERATE_NEXT_HYPOTHESIS' for d in decisions),'blind_ready':sum(d.get('action')=='PREPARE_FORWARD_BLIND' for d in decisions),'waiting_binding':sum(d.get('status')=='WAITING_BINDING' for d in decisions)};writej(OUT,summary);writej(STATE,summary);return payload
 def main():
  while True:
   try:run_once()
