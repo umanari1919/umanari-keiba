@@ -7,7 +7,7 @@ from typing import Any
 
 ROOT=Path(os.environ.get('THE_JOCKEY_RESEARCH_ROOT',Path.home()/'Downloads'/'THE-JOCKEY-RESEARCH'))
 REPORTS=ROOT/'CORE'/'reports';CHECK=ROOT/'checkpoints';BRIEFS=REPORTS/'research_briefs'
-QUEUE=REPORTS/'RESEARCH_BRIEF_queue.json';LEDGER=REPORTS/'EXPERIMENT_ledger.csv';OUT=REPORTS/'RESEARCH_CYCLE_summary.json';DECISIONS=REPORTS/'RESEARCH_CYCLE_decisions.json';STATE=CHECK/'research_cycle_director_state.json'
+QUEUE=REPORTS/'RESEARCH_BRIEF_queue.json';LEDGER=REPORTS/'EXPERIMENT_ledger.csv';RCON=REPORTS/'RESEARCH_RESULT_contracts.json';OUT=REPORTS/'RESEARCH_CYCLE_summary.json';DECISIONS=REPORTS/'RESEARCH_CYCLE_decisions.json';STATE=CHECK/'research_cycle_director_state.json'
 INTERVAL=max(120,int(os.environ.get('THE_JOCKEY_RESEARCH_CYCLE_INTERVAL','600')))
 for p in (REPORTS,CHECK,BRIEFS):p.mkdir(parents=True,exist_ok=True)
 
@@ -25,7 +25,7 @@ def read_ledger():
 def _float(v):
  try:return float(v)
  except Exception:return None
-def _brief_results(brief:dict[str,Any],rows:list[dict[str,str]]):
+def _experiment_results(brief:dict[str,Any],rows:list[dict[str,str]]):
  sid=str(brief.get('split_id') or '');bid=str(brief.get('brief_id') or '')
  if not bid:return []
  scoped=[r for r in rows if str(r.get('split_id') or '')==sid and str(r.get('brief_id') or '')==bid]
@@ -34,13 +34,20 @@ def _brief_results(brief:dict[str,Any],rows:list[dict[str,str]]):
   s=_float(r.get('selection_logloss'))
   if s is not None:vals.append((s,r))
  vals.sort(key=lambda x:x[0]);return [r for _,r in vals[:20]]
-def _decision(brief:dict[str,Any],results:list[dict[str,str]]):
- kind=str(brief.get('kind') or '')
- base={'brief_id':brief.get('brief_id'),'idea_key':brief.get('idea_key'),'kind':kind,'split_id':brief.get('split_id'),'execution_worker':brief.get('execution_worker'),'updated':now(),'test_oos_used_for_decision':False}
+def _contract(brief):
+ x=readj(RCON,{}) or {};bid=str(brief.get('brief_id') or '');sid=str(brief.get('split_id') or '')
+ return next((c for c in x.get('contracts',[]) if str(c.get('brief_id') or '')==bid and str(c.get('split_id') or '')==sid),None)
+def _decision(brief,results,contract=None):
+ kind=str(brief.get('kind') or '');base={'brief_id':brief.get('brief_id'),'idea_key':brief.get('idea_key'),'kind':kind,'split_id':brief.get('split_id'),'execution_worker':brief.get('execution_worker'),'updated':now(),'test_oos_used_for_decision':False}
+ if contract:
+  rs=str(contract.get('result_status') or '')
+  if rs in {'WAITING_RESULT','WAITING_OUTCOME'}:return {**base,'status':rs,'action':'KEEP_RUNNING','reason':contract.get('reason'),'result_contract':contract}
+  if rs=='CAPABILITY_GAP':return {**base,'status':'CAPABILITY_GAP','action':'BUILD_EXECUTOR_CAPABILITY','reason':contract.get('reason'),'missing_capability':contract.get('missing_capability'),'result_contract':contract}
+  if rs=='PROMOTE':return {**base,'status':'PROMOTE_CANDIDATE','action':'PREPARE_FORWARD_BLIND','reason':contract.get('reason'),'decision_metrics':contract.get('decision_metrics'),'same_epoch_test_oos_feedback_prohibited':True}
+  if rs=='KEEP':return {**base,'status':'KEEP','action':'GENERATE_NEXT_HYPOTHESIS','reason':contract.get('reason'),'decision_metrics':contract.get('decision_metrics'),'same_epoch_test_oos_feedback_prohibited':True}
+  if rs=='REJECT':return {**base,'status':'REJECT','action':'GENERATE_NEXT_HYPOTHESIS','reason':contract.get('reason'),'decision_metrics':contract.get('decision_metrics'),'same_epoch_test_oos_feedback_prohibited':True}
  if not results:return {**base,'status':'WAITING_BINDING','action':'KEEP_RUNNING','reason':'NO_EXPLICIT_BRIEF_BOUND_RESULT'}
- if kind=='SMALL_TICKET':return {**base,'status':'WAITING_RESULT','action':'KEEP_RUNNING','reason':'STRATEGY_RESULT_ADAPTER_NOT_YET_AVAILABLE'}
- promoted=[r for r in results if str(r.get('status','')).upper()=='PROMOTE']
- kept=[r for r in results if str(r.get('status','')).upper()=='KEEP']
+ promoted=[r for r in results if str(r.get('status','')).upper()=='PROMOTE'];kept=[r for r in results if str(r.get('status','')).upper()=='KEEP']
  if promoted:
   best=min(promoted,key=lambda r:_float(r.get('selection_logloss')) if _float(r.get('selection_logloss')) is not None else 999)
   return {**base,'status':'PROMOTE_CANDIDATE','action':'PREPARE_FORWARD_BLIND','reason':'SELECTION_PROMOTION','best_experiment_key':best.get('experiment_key'),'selection_logloss':_float(best.get('selection_logloss')),'next_epoch_feedback':['VALIDATION','SELECTION'],'same_epoch_test_oos_feedback_prohibited':True}
@@ -52,9 +59,9 @@ def run_once():
  q=readj(QUEUE,{}) or {};rows=read_ledger();decisions=[]
  for brief in q.get('briefs',[]):
   if not isinstance(brief,dict) or brief.get('status')!='READY_FOR_EXECUTION':continue
-  results=_brief_results(brief,rows);decisions.append(_decision(brief,results))
+  decisions.append(_decision(brief,_experiment_results(brief,rows),_contract(brief)))
  payload={'updated':now(),'status':'PASS' if decisions else 'WAITING','count':len(decisions),'decisions':decisions,'policy':{'explicit_brief_binding_required':True,'decision_feedback':['TRAIN','VALIDATION','SELECTION'],'test_oos_report_only':True,'same_epoch_test_oos_feedback_prohibited':True,'blind_feedback_same_epoch_prohibited':True}}
- writej(DECISIONS,payload);summary={'pid':os.getpid(),'updated':now(),'status':payload['status'],'decisions':len(decisions),'promote_candidates':sum(d.get('status')=='PROMOTE_CANDIDATE' for d in decisions),'next_hypothesis':sum(d.get('action')=='GENERATE_NEXT_HYPOTHESIS' for d in decisions),'blind_ready':sum(d.get('action')=='PREPARE_FORWARD_BLIND' for d in decisions),'waiting_binding':sum(d.get('status')=='WAITING_BINDING' for d in decisions)};writej(OUT,summary);writej(STATE,summary);return payload
+ writej(DECISIONS,payload);summary={'pid':os.getpid(),'updated':now(),'status':payload['status'],'decisions':len(decisions),'promote_candidates':sum(d.get('status')=='PROMOTE_CANDIDATE' for d in decisions),'next_hypothesis':sum(d.get('action')=='GENERATE_NEXT_HYPOTHESIS' for d in decisions),'blind_ready':sum(d.get('action')=='PREPARE_FORWARD_BLIND' for d in decisions),'capability_gaps':sum(d.get('status')=='CAPABILITY_GAP' for d in decisions),'waiting_binding':sum(d.get('status')=='WAITING_BINDING' for d in decisions)};writej(OUT,summary);writej(STATE,summary);return payload
 def main():
  while True:
   try:run_once()
