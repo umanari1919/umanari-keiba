@@ -28,22 +28,24 @@ def losing_streak(hit):
 def run_once():
  binding=active_binding()
  if not binding:writej(STATE,{'pid':os.getpid(),'updated':now(),'status':'WAITING','reason':'NO_ACTIVE_STRATEGY_BINDING'});return
- rows=[];matched_files=0
+ frames=[];matched_files=0;rejected_files=[]
  for result_path in sorted(RESULTS.glob('*.csv')):
   stem=result_path.stem;profile=STRAT/stem/'strategy_profiles.csv'
   if not profile.exists():continue
   res=pd.read_csv(result_path,low_memory=False);req={'race_id','ticket_type','selection','payout_per_100'}
-  if not req.issubset(res.columns):continue
+  if not req.issubset(res.columns):rejected_files.append({'file':result_path.name,'reason':'RESULT_SCHEMA'});continue
   prof=pd.read_csv(profile,low_memory=False);need={'race_id','strategy','ticket_type','selection'}
-  if not need.issubset(prof.columns):continue
+  if not need.issubset(prof.columns):rejected_files.append({'file':result_path.name,'reason':'PROFILE_SCHEMA'});continue
   x=prof.merge(res[list(req)],on=['race_id','ticket_type','selection'],how='left');x['payout_per_100']=pd.to_numeric(x.payout_per_100,errors='coerce')
-  if x.payout_per_100.isna().any():continue
-  matched_files+=1;x['stake']=100.0;x['payout']=x.payout_per_100;x['profit']=x.payout-x.stake;x['hit']=x.payout.gt(0)
-  for strategy,g in x.groupby('strategy',sort=True):
-   turnover=float(g.stake.sum());payout=float(g.payout.sum());profit=float(g.profit.sum());tickets=int(len(g));races=int(g.race_id.nunique())
-   rows.append({'brief_id':binding.get('brief_id'),'split_id':binding.get('split_id'),'strategy':strategy,'ROI':(payout/turnover if turnover else None),'profit':profit,'turnover':turnover,'tickets':tickets,'races':races,'hit_rate':float(g.hit.mean()) if tickets else None,'max_drawdown':max_drawdown(g.profit),'losing_streak':losing_streak(g.hit),'ticket_efficiency':(profit/tickets if tickets else None),'capital_efficiency':(profit/turnover if turnover else None),'updated':now()})
- if rows:pd.DataFrame(rows).to_csv(OUT,index=False,encoding='utf-8-sig')
- status='PASS' if rows else 'WAITING_OUTCOME';writej(STATE,{'pid':os.getpid(),'updated':now(),'status':status,'brief_id':binding.get('brief_id'),'evaluations':len(rows),'matched_result_files':matched_files,'artifact':str(OUT) if rows else None});return
+  if x.payout_per_100.isna().any():rejected_files.append({'file':result_path.name,'reason':'INCOMPLETE_PAYOUT'});continue
+  x['source_result_file']=result_path.name;frames.append(x);matched_files+=1
+ if not frames:
+  writej(STATE,{'pid':os.getpid(),'updated':now(),'status':'WAITING_OUTCOME','brief_id':binding.get('brief_id'),'matched_result_files':0,'rejected_files':rejected_files});return
+ allx=pd.concat(frames,ignore_index=True);allx['stake']=100.0;allx['payout']=allx.payout_per_100;allx['profit']=allx.payout-allx.stake;allx['hit']=allx.payout.gt(0);rows=[]
+ for strategy,g in allx.sort_values(['race_id','strategy']).groupby('strategy',sort=True):
+  turnover=float(g.stake.sum());payout=float(g.payout.sum());profit=float(g.profit.sum());tickets=int(len(g));races=int(g.race_id.nunique())
+  rows.append({'brief_id':binding.get('brief_id'),'split_id':binding.get('split_id'),'strategy':strategy,'ROI':(payout/turnover if turnover else None),'profit':profit,'turnover':turnover,'tickets':tickets,'races':races,'hit_rate':float(g.hit.mean()) if tickets else None,'max_drawdown':max_drawdown(g.profit),'losing_streak':losing_streak(g.hit),'ticket_efficiency':(profit/tickets if tickets else None),'capital_efficiency':(profit/turnover if turnover else None),'result_files':matched_files,'updated':now()})
+ pd.DataFrame(rows).to_csv(OUT,index=False,encoding='utf-8-sig');writej(STATE,{'pid':os.getpid(),'updated':now(),'status':'PASS','brief_id':binding.get('brief_id'),'evaluations':len(rows),'matched_result_files':matched_files,'rejected_files':rejected_files,'artifact':str(OUT)});return
 
 def main():
  while True:
