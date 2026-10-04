@@ -31,6 +31,7 @@ $Workers = @(
     @{File='autonomy_supervisor.py'; Label='Autonomy Supervisor'},
     @{File='lab_updater.py'; Label='Lab Updater'}
 )
+$OnDemand = @('feature_research_director.py','experiment_director.py','hypothesis_generator.py','domain_research_director.py','specialist_research_director.py','ensemble_director.py','decision_strategy_director.py')
 $RequiredModules = @('source_adapter_runtime.py','chunked_source_staging_director.py','staging_canonical_bridge.py','conflict_resolution_director.py','data_lineage.py','research_model_search_seed.py','research_cycle_material.py','research_execution_binding.py','research_result_adapter.py','strategy_outcome_evaluator.py','research_material_engine.py','mission_portfolio.py','canonical_store.py','modern_data_engine.py','modern_contracts.py','experiment_tracking.py','schema_contract_director.py','resource_manager_director.py','leakage_guard_director.py','backup_rollback_director.py','pipeline_orchestrator.py')
 $Dashboard = Join-Path $Root 'dashboard_server.py'
 foreach ($w in $Workers) { $w.Path = Join-Path $Root $w.File; if (-not (Test-Path $w.Path)) { throw "必要ファイルが見つかりません: $($w.Path)" } }
@@ -38,23 +39,22 @@ foreach ($m in $RequiredModules) { if (-not (Test-Path (Join-Path $Root $m))) { 
 if (-not (Test-Path $Dashboard)) { throw "必要ファイルが見つかりません: $Dashboard" }
 Write-Host ''
 Write-Host '============================================================'
-Write-Host ' THE JOCKEY 完全自律研究所 — SPECIALIST + REALIZED OUTCOME MODE'
+Write-Host ' THE JOCKEY 完全自律研究所 — PORTFOLIO CONTROLLED MODE'
 Write-Host '============================================================'
 Write-Host "Research Root : $Root"
-Write-Host 'Research Factory : evidence-gated idea generation / READY vs NEEDS_DATA'
-Write-Host 'Research Brief   : freeze objective / population / metrics / stop / Blind gate before execution'
-Write-Host 'Specialist       : explicit segment contract only / same-population baseline comparison'
+Write-Host 'Specialist       : explicit segment contract / same-population baseline comparison'
 Write-Host 'Strategy Outcome : realized payout only / no ROI inference from EV'
-Write-Host 'Execution Binding: explicit brief_id -> worker result attribution'
-Write-Host 'Research Cycle   : result decision -> next hypothesis / Blind / capability repair'
+Write-Host 'On-demand workers: Chief + Mission Portfolio own START/HOLD decisions'
 Write-Host 'Feedback Policy  : TEST/OOS/Blind do not tune the same epoch'
-Write-Host 'Mission Portfolio: automatic priority / next mission / worker focus'
-Write-Host 'Canonical Store  : immutable Parquet / manifest / rollback / lineage'
-Write-Host 'Chief Operating  : portfolio executive mode'
 Write-Host 'Dashboard        : http://127.0.0.1:8791'
 Write-Host ''
 foreach ($w in $Workers) {
     $existing = Get-CimInstance Win32_Process | Where-Object { $_.CommandLine -like "*$($w.File)*" -and $_.ProcessId -ne $PID }
+    if ($OnDemand -contains $w.File) {
+        if ($existing) { Write-Host ("{0,-38}: RUNNING / CHIEF MANAGED" -f $w.Label) }
+        else { Write-Host ("{0,-38}: HOLD / CHIEF MANAGED" -f $w.Label) }
+        continue
+    }
     if (-not $existing) { Start-Process -FilePath 'py' -ArgumentList @($w.Path) -WorkingDirectory $Root -WindowStyle Hidden; Write-Host ("{0,-38}: STARTED" -f $w.Label) }
     else { Write-Host ("{0,-38}: ALREADY RUNNING" -f $w.Label) }
 }
