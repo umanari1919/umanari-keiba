@@ -34,7 +34,7 @@ def start_worker(name):
   p=subprocess.Popen([sys.executable,str(script)],cwd=str(ROOT),stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL,creationflags=flags,env={**os.environ,'THE_JOCKEY_RESEARCH_ROOT':str(ROOT)});log(f'CHIEF START {name} pid={p.pid}');return True
  except Exception as e:log(f'CHIEF START FAILED {name}: {e!r}');return False
 def enforce(o,r,portfolio):
- actions=[];hold={x['worker'] for x in o.get('steps',[]) if x.get('desired')=='HOLD'};desired=set(portfolio.get('desired_workers',[]));costly={'chunked_source_staging_director','staging_canonical_bridge','feature_research_director','experiment_director','hypothesis_generator','domain_research_director','ensemble_director','decision_strategy_director'}
+ actions=[];hold={x['worker'] for x in o.get('steps',[]) if x.get('desired')=='HOLD'};desired=set(portfolio.get('desired_workers',[]));costly={'chunked_source_staging_director','staging_canonical_bridge','conflict_resolution_director','feature_research_director','experiment_director','hypothesis_generator','domain_research_director','ensemble_director','decision_strategy_director'}
  for n in costly:
   if n in hold or n not in desired or r.get('mode')=='PAUSE_EXPERIMENTS':
    if stop_worker(n):actions.append(f'STOP:{n}')
