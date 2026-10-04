@@ -6,7 +6,7 @@ import numpy as np, pandas as pd
 
 ROOT=Path(os.environ.get('THE_JOCKEY_RESEARCH_ROOT',Path.home()/'Downloads'/'THE-JOCKEY-RESEARCH'))
 CORE=ROOT/'CORE'; DATA=CORE/'data'; REPORTS=CORE/'reports'; MODELS=CORE/'models'/'EXPERIMENTS'; CHECK=ROOT/'checkpoints'
-LOG=ROOT/'logs'/'experiment_director.log'; STATE=CHECK/'experiment_director_state.json'; LEDGER=REPORTS/'EXPERIMENT_ledger.csv'; REGISTRY=REPORTS/'EXPERIMENT_registry.json'; HYP=REPORTS/'HYPOTHESIS_queue.json'; PLAN=REPORTS/'TEMPORAL_SPLIT_plan.json'
+LOG=ROOT/'logs'/'experiment_director.log'; STATE=CHECK/'experiment_director_state.json'; LEDGER=REPORTS/'EXPERIMENT_ledger.csv'; REGISTRY=REPORTS/'EXPERIMENT_registry.json'; HYP=REPORTS/'HYPOTHESIS_queue.json'; PLAN=REPORTS/'TEMPORAL_SPLIT_plan.json'; BINDINGS=REPORTS/'RESEARCH_EXECUTION_bindings.json'
 THREADS=max(1,int(os.environ.get('THE_JOCKEY_EXPERIMENT_THREADS',str(os.cpu_count() or 4))))
 ERROR_SLEEP=max(10,int(os.environ.get('THE_JOCKEY_EXPERIMENT_ERROR_SLEEP','20')))
 for p in (MODELS,CHECK,LOG.parent,REPORTS):p.mkdir(parents=True,exist_ok=True)
@@ -40,6 +40,10 @@ def split_id(plan):
         s=(plan.get('splits') or {}).get(name,{})
         parts.extend([name,str(s.get('start_date')),str(s.get('end_date'))])
     return hashlib.sha256('|'.join(parts).encode()).hexdigest()[:16]
+def active_binding(current_split):
+    b=readj(BINDINGS,{}) or {};x=(b.get('bindings') or {}).get('experiment_director') or {}
+    if str(x.get('split_id') or '')!=str(current_split):return {}
+    return x
 def feature_sets(df):
     base=[c for c in ['race_scope_cd','racecourse_cd','distance_m','track_cd','horse_age','sex_cd','carried_weight_kg','frame_no','horse_no','jockey_cd','trainer_cd'] if c in df]
     hist=base+[c for c in ['prior_start_count','days_since_last_run','prior_win_rate','prior_top2_rate','prior_top3_rate','prior_avg_finish_pct','prior_avg_time_diff','prior_avg_last3f','prior_avg_corner4_pct','recent3_time_diff_mean','recent5_time_diff_mean','recent3_finish_pct_mean','recent5_finish_pct_mean','recent3_last3f_mean','recent5_last3f_mean','recent3_corner4_pct_mean','recent5_corner4_pct_mean','same_distance_prior_count','same_distance_prior_avg_time_diff','same_track_prior_count','same_track_prior_avg_time_diff','same_racecourse_prior_count','same_racecourse_prior_avg_time_diff','same_course_surface_prior_count','same_course_surface_prior_avg_time_diff'] if c in df]
@@ -70,9 +74,13 @@ def key(c):return f"{c['target']}|{c['feature_set']}|{c['config']}|{c['seed']}"
 def done_keys(current_split):
     if not LEDGER.exists():return set()
     try:
-        d=pd.read_csv(LEDGER,usecols=lambda c:c in ['experiment_key','split_id'])
+        d=pd.read_csv(LEDGER,usecols=lambda c:c in ['experiment_key','split_id','brief_id'])
         if 'split_id' not in d.columns:return set()
         d=d[d.split_id.astype(str)==str(current_split)]
+        binding=active_binding(current_split);bid=str(binding.get('brief_id') or '')
+        if bid:
+            if 'brief_id' not in d.columns:return set()
+            d=d[d.brief_id.fillna('').astype(str)==bid]
         return set(d.experiment_key.astype(str))
     except Exception:return set()
 def append(row):pd.DataFrame([row]).to_csv(LEDGER,mode='a',header=not LEDGER.exists(),index=False,encoding='utf-8-sig')
@@ -106,10 +114,11 @@ class Engine:
         return True
     def run(self,c):
         from catboost import CatBoostClassifier
-        target=c['target'];feats=self.sets[c['feature_set']];cats=[x for x in feats if x in {'race_scope_cd','racecourse_cd','track_cd','sex_cd','jockey_cd','trainer_cd'}]
+        target=c['target'];feats=self.sets[c['feature_set']];cats=[x for x in feats if x in {'race_scope_cd','racecourse_cd','track_cd','sex_cd','jockey_cd','trainer_cd'}];binding=active_binding(self.split_id)
         parts={n:self.df[m & self.df[target].notna()] for n,m in self.splits.items()}
+        bind={'brief_id':binding.get('brief_id'),'idea_key':binding.get('idea_key'),'research_kind':binding.get('kind')} if binding else {}
         if min(map(len,parts.values()))==0:
-            row={'experiment_key':key(c),'split_id':self.split_id,'status':'REJECT_EMPTY_SPLIT','updated':now(),**c};append(row);return row
+            row={'experiment_key':key(c),'split_id':self.split_id,'status':'REJECT_EMPTY_SPLIT','updated':now(),**c,**bind};append(row);return row
         m=CatBoostClassifier(loss_function='Logloss',eval_metric='Logloss',iterations=int(c['iters']),depth=int(c['depth']),learning_rate=float(c['lr']),l2_leaf_reg=float(c['l2']),random_seed=int(c['seed']),verbose=False,allow_writing_files=False,thread_count=THREADS)
         m.fit(parts['train'][feats],parts['train'][target],cat_features=cats,eval_set=(parts['val'][feats],parts['val'][target]),early_stopping_rounds=80,use_best_model=True)
         met={}
@@ -119,8 +128,8 @@ class Engine:
         if reg.get('split_id')!=self.split_id:reg={'version':2,'split_id':self.split_id,'targets':{}}
         entry=reg.setdefault('targets',{}).setdefault(target,{});champ=entry.get('champion');promote=champ is None or met['SELECTION']['logloss']<champ['selection_logloss']-0.0005;path=''
         if promote:
-            d=MODELS/self.split_id/target;d.mkdir(parents=True,exist_ok=True);path=str(d/(key(c).replace('|','_')+'.cbm'));m.save_model(path);entry['champion']={'experiment_key':key(c),'model_path':path,'feature_set':c['feature_set'],'features':feats,'selection_logloss':met['SELECTION']['logloss'],'test':met['TEST'],'oos_report_only':met['OOS'],'split_id':self.split_id,'updated':now()};writej(REGISTRY,reg)
-        row={'experiment_key':key(c),'split_id':self.split_id,'status':'PROMOTE' if promote else 'KEEP','updated':now(),**c,'trees':int(m.tree_count_),'features':len(feats),'selection_logloss':met['SELECTION']['logloss'],'selection_auc':met['SELECTION']['auc'],'test_logloss':met['TEST']['logloss'],'test_auc':met['TEST']['auc'],'oos_logloss_report_only':met['OOS']['logloss'],'oos_auc_report_only':met['OOS']['auc'],'model_path':path}
+            d=MODELS/self.split_id/target;d.mkdir(parents=True,exist_ok=True);path=str(d/(key(c).replace('|','_')+'.cbm'));m.save_model(path);entry['champion']={'experiment_key':key(c),'model_path':path,'feature_set':c['feature_set'],'features':feats,'selection_logloss':met['SELECTION']['logloss'],'test':met['TEST'],'oos_report_only':met['OOS'],'split_id':self.split_id,'updated':now(),**bind};writej(REGISTRY,reg)
+        row={'experiment_key':key(c),'split_id':self.split_id,'status':'PROMOTE' if promote else 'KEEP','updated':now(),**c,**bind,'trees':int(m.tree_count_),'features':len(feats),'selection_logloss':met['SELECTION']['logloss'],'selection_auc':met['SELECTION']['auc'],'test_logloss':met['TEST']['logloss'],'test_auc':met['TEST']['auc'],'oos_logloss_report_only':met['OOS']['logloss'],'oos_auc_report_only':met['OOS']['auc'],'model_path':path}
         append(row);return row
 
 def main():
@@ -132,11 +141,11 @@ def main():
             except Exception as e:state('BLOCKED',f'catboost unavailable: {e}');time.sleep(60);continue
             space=candidate_space(eng.split_id);done=done_keys(eng.split_id);cand=next((c for c in space if key(c) not in done),None)
             if cand is None:
-                state('WAITING','All known hypotheses exhausted; waiting for generator',{'split_id':eng.split_id,'completed':len(done),'total':len(space),'remaining':0});time.sleep(15);continue
+                binding=active_binding(eng.split_id);state('WAITING','All known hypotheses exhausted for active brief; waiting for generator',{'split_id':eng.split_id,'brief_id':binding.get('brief_id'),'completed':len(done),'total':len(space),'remaining':0});time.sleep(15);continue
             adaptive=sum(1 for c in space if c.get('source')=='HYPOTHESIS_GEN')
-            state('RUNNING',key(cand),{'split_id':eng.split_id,'completed':len(done),'total':len(space),'remaining':max(0,len(space)-len(done)),'adaptive_candidates':adaptive,'date_range':eng.plan.get('date_range')})
-            started=time.time();row=eng.run(cand);elapsed=round(time.time()-started,1);done.add(key(cand));log(f"TURBO {row['status']} {row['experiment_key']} split={eng.split_id} src={row.get('source','BASE')} sec={elapsed} selection={row.get('selection_logloss','-')}")
-            state('RUNNING','next immediately',{'split_id':eng.split_id,'completed':len(done),'total':len(space),'remaining':max(0,len(space)-len(done)),'adaptive_candidates':adaptive,'last':row['experiment_key'],'last_result':row['status'],'last_seconds':elapsed})
+            binding=active_binding(eng.split_id);state('RUNNING',key(cand),{'split_id':eng.split_id,'completed':len(done),'total':len(space),'remaining':max(0,len(space)-len(done)),'adaptive_candidates':adaptive,'date_range':eng.plan.get('date_range'),'brief_id':binding.get('brief_id')})
+            started=time.time();row=eng.run(cand);elapsed=round(time.time()-started,1);done.add(key(cand));log(f"TURBO {row['status']} {row['experiment_key']} split={eng.split_id} brief={row.get('brief_id')} src={row.get('source','BASE')} sec={elapsed} selection={row.get('selection_logloss','-')}")
+            state('RUNNING','next immediately',{'split_id':eng.split_id,'completed':len(done),'total':len(space),'remaining':max(0,len(space)-len(done)),'adaptive_candidates':adaptive,'last':row['experiment_key'],'last_result':row['status'],'last_seconds':elapsed,'brief_id':row.get('brief_id')})
         except Exception:
             err=traceback.format_exc();log(err);state('BLOCKED',err[-1800:]);time.sleep(ERROR_SLEEP)
 if __name__=='__main__':main()
