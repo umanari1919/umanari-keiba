@@ -1,0 +1,19 @@
+{
+  "source_id": "EXAMPLE_SOURCE",
+  "enabled": false,
+  "domain": "NAR",
+  "provenance": "Describe the exact source, database/table/export job and extraction date.",
+  "rights_status": "UNVERIFIED",
+  "column_map": {
+    "source_race_id": "race_id",
+    "source_race_horse_id": "race_horse_id",
+    "source_horse_id": "horse_id",
+    "source_race_date": "race_date",
+    "source_scope": "race_scope_cd",
+    "source_label_win": "label_win",
+    "source_label_top2": "label_top2",
+    "source_label_top3": "label_top3"
+  },
+  "defaults": {},
+  "notes": "Do not enable until every CORE-003B column is mapped/defaulted and provenance/rights are verified. Never guess source column semantics."
+}
