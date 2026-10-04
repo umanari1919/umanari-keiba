@@ -8,7 +8,7 @@ ROOT=Path(os.environ.get('THE_JOCKEY_RESEARCH_ROOT',Path.home()/'Downloads'/'THE
 REPORTS=ROOT/'CORE'/'reports';CHECK=ROOT/'checkpoints';LOG=ROOT/'logs'/'foundation_selftest_director.log';STATE=CHECK/'foundation_selftest_director_state.json';REPORT=REPORTS/'FOUNDATION_SELFTEST_report.json'
 INTERVAL=max(120,int(os.environ.get('THE_JOCKEY_FOUNDATION_SELFTEST_INTERVAL','600')))
 WORKERS=['research_director.py','data_inventory_director.py','canonicalization_director.py','data_reconciliation_director.py','dependency_guard.py','foundation_selftest_director.py','temporal_sample_optimizer.py','universal_model_director.py','probability_director.py','race_simulation_director.py','decision_strategy_director.py','failure_analysis_director.py','meta_research_director.py','feature_research_director.py','experiment_director.py','hypothesis_generator.py','mlflow_mirror_director.py','domain_research_director.py','ensemble_director.py','blind_evaluation_director.py','chief_operating_director.py','autonomy_supervisor.py','lab_updater.py']
-MODULES=['modern_data_engine.py','experiment_tracking.py','schema_contract_director.py','resource_manager_director.py','leakage_guard_director.py','backup_rollback_director.py','pipeline_orchestrator.py','dashboard_server.py']
+MODULES=['modern_data_engine.py','modern_contracts.py','experiment_tracking.py','schema_contract_director.py','resource_manager_director.py','leakage_guard_director.py','backup_rollback_director.py','pipeline_orchestrator.py','dashboard_server.py']
 STATIC=['start-research-lab.ps1','install-dashboard.ps1']
 for p in (REPORTS,CHECK,LOG.parent):p.mkdir(parents=True,exist_ok=True)
 
@@ -55,7 +55,7 @@ def run_once():
   if x['status']=='BLOCKED':blockers.append({'file':name,'status':'BLOCKED','missing':x['missing']})
  blockers += [x for x in dirs if x.get('status')=='BLOCKED'];warnings=[x for x in files if x.get('status')=='WARN']
  status='BLOCKED' if blockers else ('WARN' if warnings else 'PASS')
- out={'updated':now(),'status':status,'python_and_file_checks':files,'start_script_coverage':start,'updater_coverage':updater,'installer_coverage':installer,'writable_directories':dirs,'blocker_count':len(blockers),'warning_count':len(warnings),'blockers':blockers[:50],'warnings':warnings[:50],'policy':'Workers must compile, expose state, self-update and start. Callable governance/data-engine/tracking modules must compile but do not need worker main guards.'}
+ out={'updated':now(),'status':status,'python_and_file_checks':files,'start_script_coverage':start,'updater_coverage':updater,'installer_coverage':installer,'writable_directories':dirs,'blocker_count':len(blockers),'warning_count':len(warnings),'blockers':blockers[:50],'warnings':warnings[:50],'policy':'Workers must compile, expose state, self-update and start. Callable governance/data-engine/contract/tracking modules must compile but do not need worker main guards.'}
  writej(REPORT,out);state(status,'foundation self-test complete',{'blocker_count':len(blockers),'warning_count':len(warnings)});log(f'FOUNDATION SELFTEST {status} blockers={len(blockers)} warnings={len(warnings)}');return out
 def main():
  log('FOUNDATION SELFTEST DIRECTOR START')
