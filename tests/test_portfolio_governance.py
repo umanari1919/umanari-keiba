@@ -27,6 +27,10 @@ def test_source_staging_is_prioritized_and_on_demand():
 def test_canonical_bridge_is_prioritized_and_on_demand():
     p=load('mission_portfolio');bridge={'key':'bridge','department':'DATA','kind':'CANONICAL_BRIDGE','impact':5,'urgency':5,'confidence':5,'cost':2,'risk':1,'worker':'staging_canonical_bridge'};routine={'department':'AUDIT','kind':'SAMPLE_GROWTH','impact':4,'urgency':3,'confidence':5,'cost':1,'risk':1};assert p.score(bridge)>p.score(routine);out=p.run_once({'materials':[bridge]},{'mode':'TURBO'},{'status':'PASS'});assert 'staging_canonical_bridge' in out['desired_workers'];assert 'staging_canonical_bridge' not in p.ALWAYS_ON
 
+def test_conflict_resolution_is_on_demand_and_never_auto_overwrites():
+    p=load('mission_portfolio');m={'key':'conflict','department':'DATA','kind':'CANONICAL_CONFLICT','impact':5,'urgency':5,'confidence':5,'cost':2,'risk':3,'worker':'conflict_resolution_director'};out=p.run_once({'materials':[m]},{'mode':'TURBO'},{'status':'PASS'});assert 'conflict_resolution_director' in out['desired_workers'];assert 'conflict_resolution_director' not in p.ALWAYS_ON
+    r=load('conflict_resolution_director');pol=r.case_policy({'rights_status':'APPROVED_INTERNAL','conflict_policy':{'allow_auto_replace_existing':True,'source_priority':10,'incumbent_priority':1}});assert pol['source_priority_higher'] is True;assert pol['auto_replace_requested'] is True
+
 def test_staging_requires_explicit_approved_export_contract():
     s=load('chunked_source_staging_director');base={'source_id':'T','enabled':True,'export_enabled':True,'rights_status':'APPROVED_INTERNAL','source':{'engine':'POSTGRES','schema':'public','table':'runners'},'column_map':{'a':'race_id'}};assert s.eligible(base)==(True,'READY');assert s.eligible({**base,'export_enabled':False})[0] is False;assert s.eligible({**base,'rights_status':'UNVERIFIED'})[0] is False
 
@@ -40,34 +44,20 @@ def test_bridge_classifies_new_duplicate_and_conflict(tmp_path):
     b=load('staging_canonical_bridge')
     active=tmp_path/'active.parquet';stage_root=tmp_path/'staging'/'TEST';part_dir=stage_root/'year=2026'/'domain=NAR';part_dir.mkdir(parents=True)
     cols=['race_id','race_horse_id','horse_id','race_date','race_scope_cd','label_win','label_top2','label_top3']
-    pd.DataFrame([
-        ['R1','RH1','H1','2026-01-01',2,1,1,1],
-        ['R1','RH2','H2','2026-01-01',2,0,1,1],
-    ],columns=cols).to_parquet(active,index=False)
-    part=part_dir/'part-000001.parquet'
-    pd.DataFrame([
-        ['R1','RH1','H1','2026-01-01',2,1,1,1],
-        ['R1','RH2','H2','2026-01-01',2,1,1,1],
-        ['R2','RH3','H3','2026-01-02',2,1,1,1],
-    ],columns=cols).to_parquet(part,index=False)
-    contract_dir=tmp_path/'contracts';contract_dir.mkdir();out=tmp_path/'out';out.mkdir();quar=tmp_path/'quar';quar.mkdir()
-    contract={'source_id':'TEST','enabled':True,'rights_status':'APPROVED_INTERNAL','column_map':{c:c for c in cols},'defaults':{}}
-    (contract_dir/'test.json').write_text(json.dumps(contract),encoding='utf-8')
-    rel=str(part.relative_to(stage_root)).replace('\\','/')
-    (stage_root/'manifest.json').write_text(json.dumps({'source_id':'TEST','status':'READY','updated':'x','parts':[{'file':rel,'sha256':b.sha(part)}]}),encoding='utf-8')
-    b.CONTRACTS=contract_dir;b.OUT=out;b.QUAR=quar;b.active_source=lambda:active
-    result=b.process_source(stage_root)
-    assert result['new_rows']==1
-    assert result['exact_duplicates']==1
-    assert result['conflicts']==1
-    assert Path(result['candidate']).exists()
-    assert Path(result['conflict_artifact']).exists()
+    pd.DataFrame([['R1','RH1','H1','2026-01-01',2,1,1,1],['R1','RH2','H2','2026-01-01',2,0,1,1]],columns=cols).to_parquet(active,index=False)
+    part=part_dir/'part-000001.parquet';pd.DataFrame([['R1','RH1','H1','2026-01-01',2,1,1,1],['R1','RH2','H2','2026-01-01',2,1,1,1],['R2','RH3','H3','2026-01-02',2,1,1,1]],columns=cols).to_parquet(part,index=False)
+    contract_dir=tmp_path/'contracts';contract_dir.mkdir();out=tmp_path/'out';out.mkdir();quar=tmp_path/'quar';quar.mkdir();contract={'source_id':'TEST','enabled':True,'rights_status':'APPROVED_INTERNAL','column_map':{c:c for c in cols},'defaults':{}};(contract_dir/'test.json').write_text(json.dumps(contract),encoding='utf-8')
+    rel=str(part.relative_to(stage_root)).replace('\\','/');(stage_root/'manifest.json').write_text(json.dumps({'source_id':'TEST','status':'READY','updated':'x','parts':[{'file':rel,'sha256':b.sha(part)}]}),encoding='utf-8');b.CONTRACTS=contract_dir;b.OUT=out;b.QUAR=quar;b.active_source=lambda:active
+    result=b.process_source(stage_root);assert result['new_rows']==1;assert result['exact_duplicates']==1;assert result['conflicts']==1;assert Path(result['candidate']).exists();assert Path(result['conflict_artifact']).exists()
 
 def test_bridge_projection_refuses_missing_base_columns():
     b=load('staging_canonical_bridge')
     try:b.canonical_projection_sql('stage',['race_id'],['race_id','horse_id'],{'defaults':{}})
     except ValueError as exc:assert 'BASE_COLUMNS_UNSATISFIED' in str(exc)
     else:raise AssertionError('bridge must reject incomplete canonical schema')
+
+def test_lineage_event_is_deduplicated(tmp_path):
+    d=load('data_lineage');d.REPORTS=tmp_path;d.LEDGER=tmp_path/'ledger.csv';d.GRAPH=tmp_path/'graph.json';src=tmp_path/'src.txt';out=tmp_path/'out.txt';src.write_text('a');out.write_text('b');a=d.append_event('TEST',source_id='S',source_artifact=str(src),output_artifact=str(out));b=d.append_event('TEST',source_id='S',source_artifact=str(src),output_artifact=str(out));assert a['event_id']==b['event_id'];assert len(pd.read_csv(d.LEDGER))==1
 
 def test_material_cards_are_evidence_based():
     m=load('research_material_engine');card=m._card('x','title','RESEARCH','TEST',{'source':'unit-test'},3,3,3,2,1,'experiment_director');assert card['evidence']['source']=='unit-test';assert 'result' not in card
