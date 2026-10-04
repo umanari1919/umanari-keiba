@@ -41,11 +41,15 @@ def _staging(cards):
  if ready>staged:cards.append(_card('staging:pending','契約済みSourceを分割Parquetへ搬送','DATA','SOURCE_STAGING',{'source':'SOURCE_ADAPTER_summary.json + SOURCE_STAGING_summary.json','contract_ready':ready,'staged':staged},5,5,5,3,2,'chunked_source_staging_director'))
  if blocked>0:cards.append(_card('staging:blocked','Source Staging失敗chunkを復旧','FOUNDATION','STAGING_RECOVERY',{'source':'SOURCE_STAGING_summary.json','blocked_sources':blocked},5,5,5,2,1,'chunked_source_staging_director'))
 def _bridge(cards):
- staging=readj(REPORTS/'SOURCE_STAGING_summary.json',{}) or {};bridge=readj(REPORTS/'STAGING_CANONICAL_BRIDGE_summary.json',{}) or {}
- staged=int(staging.get('ready_sources') or 0);bridged=int(bridge.get('sources') or 0);conflicts=int(bridge.get('conflicts') or 0);blocked=int(bridge.get('blocked_sources') or 0)
+ staging=readj(REPORTS/'SOURCE_STAGING_summary.json',{}) or {};bridge=readj(REPORTS/'STAGING_CANONICAL_BRIDGE_summary.json',{}) or {};resolution=readj(REPORTS/'CONFLICT_RESOLUTION_summary.json',{}) or {}
+ staged=int(staging.get('ready_sources') or 0);bridged=int(bridge.get('sources') or 0);conflicts=int(bridge.get('conflicts') or 0);blocked=int(bridge.get('blocked_sources') or 0);cases=int(resolution.get('cases') or 0)
  if staged>bridged:cards.append(_card('bridge:pending','StagingをCanonical候補へ分類','DATA','CANONICAL_BRIDGE',{'source':'SOURCE_STAGING_summary.json + STAGING_CANONICAL_BRIDGE_summary.json','staged_sources':staged,'bridged_sources':bridged},5,5,5,2,1,'staging_canonical_bridge'))
  if blocked>0:cards.append(_card('bridge:blocked','Staging→Canonical BridgeのBLOCKを復旧','FOUNDATION','BRIDGE_RECOVERY',{'source':'STAGING_CANONICAL_BRIDGE_summary.json','blocked_sources':blocked},5,5,5,2,1,'staging_canonical_bridge'))
- if conflicts>0:cards.append(_card('bridge:conflicts','Canonical競合行の原因を監査','DATA','CANONICAL_CONFLICT',{'source':'STAGING_CANONICAL_BRIDGE_summary.json','conflicts':conflicts},5,4,5,2,3,'staging_canonical_bridge'))
+ if conflicts>cases:cards.append(_card('bridge:conflicts','Canonical競合を証拠ベースで判定','DATA','CANONICAL_CONFLICT',{'source':'STAGING_CANONICAL_BRIDGE_summary.json + CONFLICT_RESOLUTION_summary.json','conflicts':conflicts,'cases':cases},5,5,5,2,3,'conflict_resolution_director'))
+def _lineage(cards):
+ recon=readj(REPORTS/'DATA_RECONCILIATION_summary.json',{}) or {};bridge=readj(REPORTS/'STAGING_CANONICAL_BRIDGE_summary.json',{}) or {};ledger=REPORTS/'DATA_LINEAGE_ledger.csv'
+ evidence_exists=bool(recon.get('changed') or int(bridge.get('new_rows') or 0)>0 or int(bridge.get('conflicts') or 0)>0)
+ if evidence_exists and not ledger.exists():cards.append(_card('lineage:missing','データ系譜台帳を復旧','FOUNDATION','LINEAGE_GAP',{'source':'reconciliation/bridge reports','ledger_exists':False},5,5,5,1,1,'conflict_resolution_director'))
 def _foundation(cards):
  f=readj(REPORTS/'FOUNDATION_SELFTEST_report.json',{}) or {}
  if f.get('status')=='BLOCKED':cards.append(_card('foundation:blockers','基盤BLOCKERを最優先で解消','FOUNDATION','BLOCKER',{'blockers':f.get('blockers',[])[:10]},5,5,5,2,1,'foundation_selftest_director'))
@@ -62,7 +66,7 @@ def _experiment(cards):
  recent=rows[-30:];keep=sum(str(r.get('status','')).upper()=='KEEP' for r in recent)
  if len(recent)>=20 and keep<=1:cards.append(_card('experiments:stagnation','探索停滞から新しい特徴量仮説を生成','RESEARCH','STAGNATION',{'recent_trials':len(recent),'keep':keep},4,3,4,3,1,'hypothesis_generator'))
 def run_once()->dict[str,Any]:
- cards=[];_foundation(cards);_inventory(cards);_source(cards);_staging(cards);_bridge(cards);_failure(cards);_blind(cards);_experiment(cards);uniq={}
+ cards=[];_foundation(cards);_inventory(cards);_source(cards);_staging(cards);_bridge(cards);_lineage(cards);_failure(cards);_blind(cards);_experiment(cards);uniq={}
  for c in cards:
   old=uniq.get(c['key'])
   if old is None or (c['impact']+c['urgency'])>(old['impact']+old['urgency']):uniq[c['key']]=c
