@@ -3,6 +3,7 @@ $Root = if ($env:THE_JOCKEY_RESEARCH_ROOT) { $env:THE_JOCKEY_RESEARCH_ROOT } els
 $env:THE_JOCKEY_RESEARCH_ROOT = $Root
 $Workers = @(
     @{File='foundation_selftest_director.py'; Label='Foundation Self-Test'},
+    @{File='dependency_guard.py'; Label='Dependency Guard'},
     @{File='data_inventory_director.py'; Label='Data Inventory Director'},
     @{File='canonicalization_director.py'; Label='Canonicalization Director'},
     @{File='data_reconciliation_director.py'; Label='Data Reconciliation Director'},
@@ -24,17 +25,20 @@ $Workers = @(
     @{File='autonomy_supervisor.py'; Label='Autonomy Supervisor'},
     @{File='lab_updater.py'; Label='Lab Updater'}
 )
-$RequiredModules = @('schema_contract_director.py','resource_manager_director.py','leakage_guard_director.py','backup_rollback_director.py','pipeline_orchestrator.py')
+$RequiredModules = @('modern_data_engine.py','schema_contract_director.py','resource_manager_director.py','leakage_guard_director.py','backup_rollback_director.py','pipeline_orchestrator.py')
 $Dashboard = Join-Path $Root 'dashboard_server.py'
 foreach ($w in $Workers) { $w.Path = Join-Path $Root $w.File; if (-not (Test-Path $w.Path)) { throw "必要ファイルが見つかりません: $($w.Path)" } }
-foreach ($m in $RequiredModules) { if (-not (Test-Path (Join-Path $Root $m))) { throw "統制モジュールが見つかりません: $m" } }
+foreach ($m in $RequiredModules) { if (-not (Test-Path (Join-Path $Root $m))) { throw "統制/高速化モジュールが見つかりません: $m" } }
 if (-not (Test-Path $Dashboard)) { throw "必要ファイルが見つかりません: $Dashboard" }
 Write-Host ''
 Write-Host '============================================================'
-Write-Host ' THE JOCKEY 完全自律研究所 — FOUNDATION HARDENED MODE'
+Write-Host ' THE JOCKEY 完全自律研究所 — MODERN STACK MODE'
 Write-Host '============================================================'
 Write-Host "Research Root : $Root"
-Write-Host 'Foundation Test : compile / worker coverage / writable dirs'
+Write-Host ('uv               : ' + $(if (Get-Command uv -ErrorAction SilentlyContinue) { 'AVAILABLE' } else { 'NOT INSTALLED / FALLBACK' }))
+Write-Host 'Foundation Test  : compile / worker coverage / writable dirs'
+Write-Host 'Dependency Guard : stable versions / no auto-upgrade'
+Write-Host 'Data Engine      : DuckDB / Polars / Arrow optional acceleration'
 Write-Host 'Data Control     : inventory / canonicalization / reconciliation'
 Write-Host 'Schema Contract  : enforced'
 Write-Host 'Time Splits      : auto-optimized'
