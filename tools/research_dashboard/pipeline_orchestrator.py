@@ -4,7 +4,7 @@ from datetime import datetime
 from pathlib import Path
 ROOT=Path(os.environ.get('THE_JOCKEY_RESEARCH_ROOT',Path.home()/'Downloads'/'THE-JOCKEY-RESEARCH'));CHECK=ROOT/'checkpoints';REPORTS=ROOT/'CORE'/'reports'
 STATE=CHECK/'pipeline_orchestrator_state.json';PLAN=REPORTS/'ORCHESTRATION_plan.json';CONTROL=REPORTS/'OPERATION_control.json'
-ORDER=['foundation_selftest_director','source_adapter_director','chunked_source_staging_director','staging_canonical_bridge','conflict_resolution_director','data_inventory_director','canonicalization_director','data_reconciliation_director','research_factory_director','research_director','temporal_sample_optimizer','universal_model_director','feature_research_director','experiment_director','hypothesis_generator','probability_director','domain_research_director','ensemble_director','race_simulation_director','decision_strategy_director','blind_evaluation_director','failure_analysis_director']
+ORDER=['foundation_selftest_director','source_adapter_director','chunked_source_staging_director','staging_canonical_bridge','conflict_resolution_director','data_inventory_director','canonicalization_director','data_reconciliation_director','research_factory_director','research_brief_director','research_director','temporal_sample_optimizer','universal_model_director','feature_research_director','experiment_director','hypothesis_generator','probability_director','domain_research_director','ensemble_director','race_simulation_director','decision_strategy_director','blind_evaluation_director','failure_analysis_director']
 STATE_FILES={n:CHECK/f'{n}_state.json' for n in ORDER}
 for p in (CHECK,REPORTS):p.mkdir(parents=True,exist_ok=True)
 def now():return datetime.now().astimezone().isoformat()
@@ -21,7 +21,7 @@ def run_once(schema=None,leak=None,resource=None,foundation=None,portfolio=None)
  elif resource.get('mode')=='PAUSE_EXPERIMENTS':reason='RESOURCE_PAUSE'
  elif portfolio.get('mode') and portfolio.get('mode')!='NORMAL':reason=portfolio.get('mode')
  else:reason='NORMAL'
- downstream={'chunked_source_staging_director','staging_canonical_bridge','conflict_resolution_director','data_reconciliation_director','research_director','temporal_sample_optimizer','universal_model_director','feature_research_director','experiment_director','hypothesis_generator','probability_director','domain_research_director','ensemble_director','race_simulation_director','decision_strategy_director'}
+ downstream={'chunked_source_staging_director','staging_canonical_bridge','conflict_resolution_director','data_reconciliation_director','research_brief_director','research_director','temporal_sample_optimizer','universal_model_director','feature_research_director','experiment_director','hypothesis_generator','probability_director','domain_research_director','ensemble_director','race_simulation_director','decision_strategy_director'}
  desired_portfolio=set(portfolio.get('desired_workers',[]));costly={'chunked_source_staging_director','staging_canonical_bridge','conflict_resolution_director','feature_research_director','experiment_director','hypothesis_generator','domain_research_director','ensemble_director','decision_strategy_director'}
  for n in ORDER:
   st=readj(STATE_FILES[n],{}) or {};desired='RUN';why='BASELINE'
