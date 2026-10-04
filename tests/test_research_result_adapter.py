@@ -22,9 +22,10 @@ def test_domain_gap_is_measured_but_not_auto_promoted(tmp_path):
  out=a._domain({'split_id':'S1'},{'kind':'DOMAIN_GAP'})
  assert out['result_status']=='KEEP';assert abs(out['decision_metrics']['absolute_domain_gap']-0.1)<1e-9
 
-def test_specialist_missing_executor_becomes_capability_gap():
- a=load('research_result_adapter');out=a._domain({'split_id':'S1'},{'kind':'OBSTACLE_SPECIALIST'})
- assert out['result_status']=='CAPABILITY_GAP';assert out['missing_capability']=='OBSTACLE_SPECIALIST'
+def test_specialist_without_bound_artifact_waits_for_result(tmp_path):
+ a=load('research_result_adapter');a.SPECIALIST=tmp_path/'missing.csv'
+ out=a._specialist({'brief_id':'B1','split_id':'S1'},{'kind':'OBSTACLE_SPECIALIST'})
+ assert out['result_status']=='WAITING_RESULT';assert 'SPECIALIST' in out['reason']
 
 def test_strategy_never_invents_realized_roi(tmp_path):
  a=load('research_result_adapter');a.STRATEGY=tmp_path/'missing.csv'
@@ -32,11 +33,11 @@ def test_strategy_never_invents_realized_roi(tmp_path):
  assert out['result_status']=='WAITING_OUTCOME';assert 'PAYOUT' in out['reason']
 
 def test_cycle_maps_capability_gap_to_build_action():
- c=load('research_cycle_director');brief={'brief_id':'B1','idea_key':'i','kind':'DEBUT_SPECIALIST','split_id':'S1','execution_worker':'domain_research_director'}
- out=c._decision(brief,[],{'result_status':'CAPABILITY_GAP','reason':'SPECIALIST_EXECUTOR_NOT_IMPLEMENTED','missing_capability':'DEBUT_SPECIALIST'})
+ c=load('research_cycle_director');brief={'brief_id':'B1','idea_key':'i','kind':'DEBUT_SPECIALIST','split_id':'S1','execution_worker':'specialist_research_director'}
+ out=c._decision(brief,[],{'result_status':'CAPABILITY_GAP','reason':'EXPLICIT_CAPABILITY_GAP','missing_capability':'SOME_FUTURE_SPECIALIST_COMPONENT'})
  assert out['status']=='CAPABILITY_GAP';assert out['action']=='BUILD_EXECUTOR_CAPABILITY';assert out['test_oos_used_for_decision'] is False
 
 def test_capability_gap_becomes_foundation_mission():
- m=load('research_cycle_material');cycle={'decisions':[{'brief_id':'B1','status':'CAPABILITY_GAP','action':'BUILD_EXECUTOR_CAPABILITY','missing_capability':'JRA_MORNING','execution_worker':'domain_research_director'}]}
+ m=load('research_cycle_material');cycle={'decisions':[{'brief_id':'B1','status':'CAPABILITY_GAP','action':'BUILD_EXECUTOR_CAPABILITY','missing_capability':'FUTURE_COMPONENT','execution_worker':'specialist_research_director'}]}
  out=m.inject({'materials':[]},cycle);card=out['materials'][0]
- assert card['department']=='FOUNDATION';assert card['kind']=='RESEARCH_CAPABILITY_GAP';assert card['worker']=='domain_research_director'
+ assert card['department']=='FOUNDATION';assert card['kind']=='RESEARCH_CAPABILITY_GAP';assert card['worker']=='specialist_research_director'
