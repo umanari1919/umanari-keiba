@@ -35,7 +35,7 @@ def start_worker(name):
  except Exception as e:log(f'CHIEF START FAILED {name}: {e!r}');return False
 def enforce(o,r,portfolio):
  actions=[];hold={x['worker'] for x in o.get('steps',[]) if x.get('desired')=='HOLD'};desired=set(portfolio.get('desired_workers',[]))
- costly={'feature_research_director','experiment_director','hypothesis_generator','domain_research_director','ensemble_director','decision_strategy_director'}
+ costly={'source_staging_director','feature_research_director','experiment_director','hypothesis_generator','domain_research_director','ensemble_director','decision_strategy_director'}
  for n in costly:
   if n in hold or n not in desired or r.get('mode')=='PAUSE_EXPERIMENTS':
    if stop_worker(n):actions.append(f'STOP:{n}')
@@ -71,7 +71,7 @@ def run_once():
       'schema':s,'resources':r,'leakage':l,'backup':{'status':b.get('status'),'snapshot':b.get('snapshot'),'items':len(b.get('items',[]))},'orchestration':o}
  writej(STATE,out);writej(REPORTS/'CHIEF_OPERATING_report.json',out);log(f"CHIEF {status} next={portfolio.get('next_mission',{}).get('key')} mode={portfolio.get('mode')} resource={r.get('mode')} actions={actions}");return out
 def main():
- log('CHIEF OPERATING DIRECTOR START v2 PORTFOLIO MODE')
+ log('CHIEF OPERATING DIRECTOR START v2.1 PORTFOLIO + STAGING')
  while True:
   try:run_once()
   except Exception:
