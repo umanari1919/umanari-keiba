@@ -53,9 +53,14 @@ def _factory(cards):
  s=readj(REPORTS/'RESEARCH_FACTORY_ideas.json',{}) or {}
  for x in (s.get('ideas') or [])[:30]:
   if not isinstance(x,dict):continue
-  status=x.get('status');kind=x.get('kind','RESEARCH_IDEA');key=str(x.get('key') or 'unknown');title=str(x.get('title') or key);impact=int(x.get('impact') or 3);conf=int(x.get('confidence') or 3)
-  if status=='READY':cards.append(_card(f'factory:{key}',title,'RESEARCH',kind,{'source':'RESEARCH_FACTORY_ideas.json','idea':key,'evidence':x.get('evidence')},impact,3,conf,2,1,x.get('worker') or 'feature_research_director'))
-  elif status=='NEEDS_DATA':cards.append(_card(f'factory-data:{key}',f'研究前提データを整備: {title}','DATA','RESEARCH_DATA_REQUIREMENT',{'source':'RESEARCH_FACTORY_ideas.json','idea':key,'missing_columns':x.get('missing_columns')},impact,4,conf,3,2,'source_adapter_director'))
+  status=x.get('status');key=str(x.get('key') or 'unknown');title=str(x.get('title') or key);impact=int(x.get('impact') or 3);conf=int(x.get('confidence') or 3)
+  if status=='NEEDS_DATA':cards.append(_card(f'factory-data:{key}',f'研究前提データを整備: {title}','DATA','RESEARCH_DATA_REQUIREMENT',{'source':'RESEARCH_FACTORY_ideas.json','idea':key,'missing_columns':x.get('missing_columns')},impact,4,conf,3,2,'source_adapter_director'))
+def _briefs(cards):
+ q=readj(REPORTS/'RESEARCH_BRIEF_queue.json',{}) or {}
+ for b in (q.get('briefs') or [])[:30]:
+  if not isinstance(b,dict) or b.get('status')!='READY_FOR_EXECUTION':continue
+  key=str(b.get('brief_id') or b.get('idea_key') or 'unknown');kind=str(b.get('kind') or 'RESEARCH_BRIEF');worker=b.get('execution_worker') or 'experiment_director';title=str(b.get('title') or key)
+  cards.append(_card(f'brief:{key}',f'研究計画を実行: {title}','RESEARCH','RESEARCH_BRIEF',{'source':'RESEARCH_BRIEF_queue.json','brief_id':b.get('brief_id'),'idea_key':b.get('idea_key'),'split_id':b.get('split_id'),'metrics':b.get('evaluation_metrics')},5,4,5,3,1,worker))
 def _foundation(cards):
  f=readj(REPORTS/'FOUNDATION_SELFTEST_report.json',{}) or {}
  if f.get('status')=='BLOCKED':cards.append(_card('foundation:blockers','基盤BLOCKERを最優先で解消','FOUNDATION','BLOCKER',{'blockers':f.get('blockers',[])[:10]},5,5,5,2,1,'foundation_selftest_director'))
@@ -72,8 +77,8 @@ def _experiment(cards):
  recent=rows[-30:];keep=sum(str(r.get('status','')).upper()=='KEEP' for r in recent)
  if len(recent)>=20 and keep<=1:cards.append(_card('experiments:stagnation','探索停滞から新しい特徴量仮説を生成','RESEARCH','STAGNATION',{'recent_trials':len(recent),'keep':keep},4,3,4,3,1,'hypothesis_generator'))
 def run_once()->dict[str,Any]:
- cards=[];_foundation(cards);_inventory(cards);_source(cards);_staging(cards);_bridge(cards);_lineage(cards);_factory(cards);_failure(cards);_blind(cards);_experiment(cards);uniq={}
+ cards=[];_foundation(cards);_inventory(cards);_source(cards);_staging(cards);_bridge(cards);_lineage(cards);_factory(cards);_briefs(cards);_failure(cards);_blind(cards);_experiment(cards);uniq={}
  for c in cards:
   old=uniq.get(c['key'])
   if old is None or (c['impact']+c['urgency'])>(old['impact']+old['urgency']):uniq[c['key']]=c
- out={'updated':now(),'count':len(uniq),'materials':list(uniq.values()),'policy':'Research materials are generated only from observed reports/states. Research Factory READY ideas become research missions; unsupported ideas become data requirements.'};REPORTS.mkdir(parents=True,exist_ok=True);tmp=OUT.with_suffix('.tmp');tmp.write_text(json.dumps(out,ensure_ascii=False,indent=2),encoding='utf-8');tmp.replace(OUT);return out
+ out={'updated':now(),'count':len(uniq),'materials':list(uniq.values()),'policy':'Unsupported Research Factory ideas become DATA requirements. READY ideas must pass through a frozen Research Brief before execution.'};REPORTS.mkdir(parents=True,exist_ok=True);tmp=OUT.with_suffix('.tmp');tmp.write_text(json.dumps(out,ensure_ascii=False,indent=2),encoding='utf-8');tmp.replace(OUT);return out
