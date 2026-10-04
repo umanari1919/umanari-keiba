@@ -19,10 +19,9 @@ def readj(p:Path,d=None):
 
 def score(m:dict[str,Any])->float:
     impact=float(m.get('impact',3));urgency=float(m.get('urgency',3));confidence=float(m.get('confidence',3));cost=max(1.0,float(m.get('cost',2)));risk=max(0.0,float(m.get('risk',1)))
-    # Value first, then urgency; penalize expensive/risky work without letting cost bury blockers.
     base=impact*2.2+urgency*1.8+confidence*1.0-cost*0.9-risk*1.1
     if m.get('kind')=='BLOCKER':base+=8
-    if m.get('department')=='DATA' and m.get('kind') in {'UNUSED_DATA','SOURCE_CONTRACT'}:base+=3
+    if m.get('department')=='DATA' and m.get('kind') in {'UNUSED_DATA','SOURCE_CONTRACT','SOURCE_STAGING','STAGING_RECOVERY'}:base+=3
     return round(base,3)
 
 def run_once(materials:dict[str,Any]|None=None,resource:dict[str,Any]|None=None,foundation:dict[str,Any]|None=None)->dict[str,Any]:
@@ -42,13 +41,12 @@ def run_once(materials:dict[str,Any]|None=None,resource:dict[str,Any]|None=None,
     desired_workers=set(ALWAYS_ON)
     for m in active:
         if m.get('worker'):desired_workers.add(m['worker'])
-    # Normal scientific chain remains available; expensive discovery workers are portfolio-driven.
     desired_workers.update({'research_director','temporal_sample_optimizer','universal_model_director','probability_director','race_simulation_director','blind_evaluation_director','failure_analysis_director'})
     if mode not in {'FOUNDATION_RECOVERY','RESOURCE_CONSTRAINED'}:
         if any(m.get('department')=='RESEARCH' for m in active):desired_workers.update({'feature_research_director','experiment_director','hypothesis_generator','domain_research_director','ensemble_director'})
         if any(m.get('department')=='STRATEGY' for m in active):desired_workers.add('decision_strategy_director')
     out={'updated':now(),'mode':mode,'next_mission':next_mission,'active_missions':active,'backlog':ranked[3:25],
-         'desired_workers':sorted(desired_workers),'decision_rule':'score=impact*2.2+urgency*1.8+confidence-cost*0.9-risk*1.1 plus governance boosts; blockers always dominate.'}
+         'desired_workers':sorted(desired_workers),'decision_rule':'score=impact*2.2+urgency*1.8+confidence-cost*0.9-risk*1.1 plus governance boosts; blockers and governed data supply dominate.'}
     REPORTS.mkdir(parents=True,exist_ok=True)
     for p,obj in ((PLAN,out),(NEXT,next_mission),(CONTROL,{'updated':now(),'mode':mode,'desired_workers':sorted(desired_workers),'active_mission_keys':[m['key'] for m in active]})):
         t=p.with_suffix(p.suffix+'.tmp');t.write_text(json.dumps(obj,ensure_ascii=False,indent=2),encoding='utf-8');t.replace(p)
