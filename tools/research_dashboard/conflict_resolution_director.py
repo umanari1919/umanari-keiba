@@ -13,6 +13,7 @@ def writej(p,o):
 def readj(p,d=None):
  try:return json.loads(Path(p).read_text(encoding='utf-8-sig'))
  except Exception:return d
+def lit(v):return "'"+str(v).replace("'","''")+"'"
 def source_id_from_name(path):
  name=Path(path).name
  return name.split('__conflicts__',1)[0] if '__conflicts__' in name else name.split('__',1)[0]
@@ -24,18 +25,15 @@ def contract_for(source_id):
 def case_policy(contract):
  policy=contract.get('conflict_policy') or {}
  explicit=bool(policy.get('allow_auto_replace_existing') is True)
- source_priority=policy.get('source_priority')
- incumbent_priority=policy.get('incumbent_priority')
+ source_priority=policy.get('source_priority');incumbent_priority=policy.get('incumbent_priority')
  try:better=float(source_priority)>float(incumbent_priority)
  except Exception:better=False
  rights=contract.get('rights_status') in {'APPROVED','APPROVED_INTERNAL'}
  return {'auto_replace_requested':explicit,'source_priority':source_priority,'incumbent_priority':incumbent_priority,'source_priority_higher':better,'rights_approved':rights}
 def evaluate(path):
  import duckdb
- source_id=source_id_from_name(path);cp,contract=contract_for(source_id);policy=case_policy(contract)
- con=duckdb.connect()
- try:
-  rows=int(con.execute(f"SELECT count(*) FROM read_parquet('{str(path).replace("'","''")}')").fetchone()[0] or 0)
+ source_id=source_id_from_name(path);cp,contract=contract_for(source_id);policy=case_policy(contract);con=duckdb.connect()
+ try:rows=int(con.execute(f"SELECT count(*) FROM read_parquet({lit(path)})").fetchone()[0] or 0)
  finally:con.close()
  decision='FOUNDER_REVIEW';reason='NO_EXPLICIT_SAFE_AUTO_REPLACE_POLICY'
  if not contract:reason='SOURCE_CONTRACT_MISSING'
@@ -50,8 +48,7 @@ def evaluate(path):
  except Exception:pass
  return case
 def run_once():
- cases=[evaluate(p) for p in sorted(QUAR.glob('*__conflicts__*.parquet'))]
- founder=sum(bool(x.get('founder_review_required')) for x in cases);status='WARN' if founder else ('PASS' if cases else 'WAITING')
+ cases=[evaluate(p) for p in sorted(QUAR.glob('*__conflicts__*.parquet'))];founder=sum(bool(x.get('founder_review_required')) for x in cases);status='WARN' if founder else ('PASS' if cases else 'WAITING')
  out={'pid':os.getpid(),'updated':now(),'status':status,'cases':len(cases),'founder_review_cases':founder,'results':cases,'policy':'Evidence-driven triage only. No conflict artifact can overwrite Active Canonical automatically.'};writej(SUMMARY,out);writej(STATE,out);return out
 def main():
  while True:
