@@ -6,7 +6,8 @@ from pathlib import Path
 import numpy as np,pandas as pd
 
 ROOT=Path(os.environ.get('THE_JOCKEY_RESEARCH_ROOT',Path.home()/'Downloads'/'THE-JOCKEY-RESEARCH'))
-DATA=ROOT/'CORE'/'data';REPORTS=ROOT/'CORE'/'reports';CHECK=ROOT/'checkpoints';CONTRACT=ROOT/'CORE'/'contracts'/'specialist_segments.json';SRC=DATA/'CORE-004_field_strength_v2.csv';PLAN=REPORTS/'TEMPORAL_SPLIT_plan.json';BIND=REPORTS/'RESEARCH_EXECUTION_bindings.json';OUT=REPORTS/'SPECIALIST_metrics.csv';STATE=CHECK/'specialist_research_director_state.json';INTERVAL=max(120,int(os.environ.get('THE_JOCKEY_SPECIALIST_INTERVAL','300')))
+DATA=ROOT/'CORE'/'data';REPORTS=ROOT/'CORE'/'reports';CHECK=ROOT/'checkpoints';CONTRACT=ROOT/'CORE'/'contracts'/'specialist_segments.json';PROPOSAL=ROOT/'CORE'/'contracts'/'specialist_segments.proposal.json';SRC=DATA/'CORE-004_field_strength_v2.csv';PLAN=REPORTS/'TEMPORAL_SPLIT_plan.json';BIND=REPORTS/'RESEARCH_EXECUTION_bindings.json';OUT=REPORTS/'SPECIALIST_metrics.csv';STATE=CHECK/'specialist_research_director_state.json';INTERVAL=max(120,int(os.environ.get('THE_JOCKEY_SPECIALIST_INTERVAL','300')))
+SPECIALIST_KINDS=['JRA_MORNING','DEBUT_SPECIALIST','OBSTACLE_SPECIALIST','NAR_TRANSFER_SPECIALIST']
 for p in (REPORTS,CHECK,CONTRACT.parent):p.mkdir(parents=True,exist_ok=True)
 
 def now():return datetime.now().astimezone().isoformat()
@@ -15,6 +16,9 @@ def readj(p,d=None):
  except Exception:return d
 def writej(p,o):
  p=Path(p);t=p.with_suffix(p.suffix+'.tmp');t.write_text(json.dumps(o,ensure_ascii=False,indent=2),encoding='utf-8');t.replace(p)
+def ensure_proposal():
+ if PROPOSAL.exists():return
+ writej(PROPOSAL,{'version':1,'enabled':False,'segments':{k:{'enabled':False,'column':None,'values':[],'race_scope_cd':1 if k.startswith('JRA_') or k in {'DEBUT_SPECIALIST','OBSTACLE_SPECIALIST'} else 2,'note':'列名と値は実データ契約を確認後に明示する。推測禁止。'} for k in SPECIALIST_KINDS},'policy':'This is a disabled proposal. Never infer segment semantics from names.'})
 def sid(plan):
  a=[]
  for n in ['TRAIN','VALIDATION','SELECTION','TEST','OOS']:
@@ -33,32 +37,38 @@ def segment_mask(df,spec):
  return m
 def active_binding():
  b=readj(BIND,{}) or {};return (b.get('bindings') or {}).get('specialist_research_director') or {}
+def train_model(parts,features,cats,target):
+ from catboost import CatBoostClassifier
+ for c in cats:
+  for p in parts.values():p[c]=p[c].fillna('MISSING').astype(str)
+ m=CatBoostClassifier(iterations=500,depth=6,learning_rate=.04,l2_leaf_reg=6,loss_function='Logloss',eval_metric='Logloss',verbose=False,random_seed=20261004,allow_writing_files=False,thread_count=max(1,os.cpu_count() or 4));m.fit(parts['TRAIN'][features],parts['TRAIN'][target],cat_features=cats,eval_set=(parts['VALIDATION'][features],parts['VALIDATION'][target]),early_stopping_rounds=60,use_best_model=True)
+ out={}
+ for n in ['VALIDATION','SELECTION','TEST','OOS']:
+  if parts[n].empty:continue
+  out[n]=ll(parts[n][target],m.predict_proba(parts[n][features])[:,1])
+ return out
 def run_once():
- binding=active_binding();plan=readj(PLAN,{}) or {};contract=readj(CONTRACT,{}) or {}
+ ensure_proposal();binding=active_binding();plan=readj(PLAN,{}) or {};contract=readj(CONTRACT,{}) or {}
  if not binding:writej(STATE,{'pid':os.getpid(),'updated':now(),'status':'WAITING','reason':'NO_ACTIVE_BINDING'});return
  if not SRC.exists() or not plan.get('splits') or plan.get('status')=='BLOCKED':writej(STATE,{'pid':os.getpid(),'updated':now(),'status':'WAITING','reason':'DATA_OR_TEMPORAL_NOT_READY'});return
  current=sid(plan)
  if str(binding.get('split_id') or '')!=current:writej(STATE,{'pid':os.getpid(),'updated':now(),'status':'WAITING','reason':'BINDING_SPLIT_MISMATCH'});return
  kind=str(binding.get('kind') or '');spec=(contract.get('segments') or {}).get(kind) or {}
- if not spec.get('enabled'):writej(STATE,{'pid':os.getpid(),'updated':now(),'status':'NEEDS_CONTRACT','kind':kind,'reason':'SPECIALIST_SEGMENT_CONTRACT_MISSING'});return
+ if kind not in SPECIALIST_KINDS or not spec.get('enabled'):writej(STATE,{'pid':os.getpid(),'updated':now(),'status':'NEEDS_CONTRACT','kind':kind,'reason':'SPECIALIST_SEGMENT_CONTRACT_MISSING','proposal':str(PROPOSAL)});return
  df=pd.read_csv(SRC,low_memory=False);df['race_date']=pd.to_datetime(df.race_date,errors='coerce');seg=segment_mask(df,spec)
  if seg is None:writej(STATE,{'pid':os.getpid(),'updated':now(),'status':'NEEDS_CONTRACT','kind':kind,'reason':'SEGMENT_COLUMN_OR_VALUES_INVALID'});return
- df=df[seg].copy();feats=[c for c in ['racecourse_cd','distance_m','track_cd','horse_age','sex_cd','carried_weight_kg','jockey_cd','trainer_cd','prior_start_count','days_since_last_run','prior_win_rate','prior_top2_rate','prior_top3_rate','recent5_time_diff_mean','recent5_finish_pct_mean','ability_vs_field','field_strength_v2','prior_avg_field_strength'] if c in df]
- if len(df)<500 or len(feats)<4:writej(STATE,{'pid':os.getpid(),'updated':now(),'status':'NEEDS_DATA','kind':kind,'rows':len(df),'features':len(feats),'reason':'SPECIALIST_SAMPLE_OR_FEATURES_INSUFFICIENT'});return
+ df=df[seg].copy();base_feats=[c for c in ['racecourse_cd','distance_m','track_cd','horse_age','sex_cd','carried_weight_kg'] if c in df];full_feats=base_feats+[c for c in ['jockey_cd','trainer_cd','prior_start_count','days_since_last_run','prior_win_rate','prior_top2_rate','prior_top3_rate','recent5_time_diff_mean','recent5_finish_pct_mean','ability_vs_field','field_strength_v2','prior_avg_field_strength'] if c in df and c not in base_feats]
+ if len(df)<500 or len(base_feats)<3 or len(full_feats)<5:writej(STATE,{'pid':os.getpid(),'updated':now(),'status':'NEEDS_DATA','kind':kind,'rows':len(df),'base_features':len(base_feats),'full_features':len(full_feats),'reason':'SPECIALIST_SAMPLE_OR_FEATURES_INSUFFICIENT'});return
  try:from catboost import CatBoostClassifier
  except Exception as e:writej(STATE,{'pid':os.getpid(),'updated':now(),'status':'BLOCKED','reason':f'CATBOOST_UNAVAILABLE:{e!r}'});return
- cats=[c for c in feats if c in {'racecourse_cd','track_cd','sex_cd','jockey_cd','trainer_cd'}];rows=[]
+ rows=[]
  for target in ['label_win','label_top2','label_top3']:
   parts={n:df[mask(df,plan,n)&df[target].notna()].copy() for n in ['TRAIN','VALIDATION','SELECTION','TEST','OOS']}
   if len(parts['TRAIN'])<250 or min(len(parts['VALIDATION']),len(parts['SELECTION']))<50:continue
-  for c in cats:
-   for p in parts.values():p[c]=p[c].fillna('MISSING').astype(str)
-  m=CatBoostClassifier(iterations=500,depth=6,learning_rate=.04,l2_leaf_reg=6,loss_function='Logloss',eval_metric='Logloss',verbose=False,random_seed=20261004,allow_writing_files=False,thread_count=max(1,os.cpu_count() or 4));m.fit(parts['TRAIN'][feats],parts['TRAIN'][target],cat_features=cats,eval_set=(parts['VALIDATION'][feats],parts['VALIDATION'][target]),early_stopping_rounds=60,use_best_model=True)
-  metric={}
-  for n in ['SELECTION','TEST','OOS']:
-   if parts[n].empty:continue
-   pr=m.predict_proba(parts[n][feats])[:,1];metric[n]=ll(parts[n][target],pr)
-  rows.append({'brief_id':binding.get('brief_id'),'split_id':current,'kind':kind,'target':target,'sample_rows':len(df),'selection_logloss':metric.get('SELECTION'),'test_logloss_report_only':metric.get('TEST'),'oos_logloss_report_only':metric.get('OOS'),'contract_column':spec.get('column'),'contract_values':'|'.join(map(str,spec.get('values') or [])),'updated':now()})
+  base_cats=[c for c in base_feats if c in {'racecourse_cd','track_cd','sex_cd'}];full_cats=[c for c in full_feats if c in {'racecourse_cd','track_cd','sex_cd','jockey_cd','trainer_cd'}]
+  bm=train_model({k:v.copy() for k,v in parts.items()},base_feats,base_cats,target);cm=train_model({k:v.copy() for k,v in parts.items()},full_feats,full_cats,target)
+  improvement=(bm.get('SELECTION')-cm.get('SELECTION')) if bm.get('SELECTION') is not None and cm.get('SELECTION') is not None else None;val_improvement=(bm.get('VALIDATION')-cm.get('VALIDATION')) if bm.get('VALIDATION') is not None and cm.get('VALIDATION') is not None else None
+  rows.append({'brief_id':binding.get('brief_id'),'split_id':current,'kind':kind,'target':target,'sample_rows':len(df),'validation_logloss':cm.get('VALIDATION'),'baseline_validation_logloss':bm.get('VALIDATION'),'validation_improvement':val_improvement,'selection_logloss':cm.get('SELECTION'),'baseline_selection_logloss':bm.get('SELECTION'),'selection_improvement':improvement,'test_logloss_report_only':cm.get('TEST'),'oos_logloss_report_only':cm.get('OOS'),'contract_column':spec.get('column'),'contract_values':'|'.join(map(str,spec.get('values') or [])),'updated':now()})
  pd.DataFrame(rows).to_csv(OUT,index=False,encoding='utf-8-sig');status='PASS' if rows else 'NEEDS_DATA';writej(STATE,{'pid':os.getpid(),'updated':now(),'status':status,'kind':kind,'brief_id':binding.get('brief_id'),'models':len(rows),'artifact':str(OUT)});return
 
 def main():
