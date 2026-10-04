@@ -124,10 +124,22 @@ def validate_dataset(path: Path, expected_columns: list[str] | None = None) -> d
               count(*) FILTER (WHERE race_horse_id IS NULL) null_race_horse_id,
               count(*) - count(distinct cast(race_horse_id as varchar)) duplicate_race_horse_id,
               count(*) FILTER (WHERE try_cast(race_date as date) IS NULL) invalid_race_date,
-              count(*) FILTER (WHERE cast(race_scope_cd as varchar) NOT IN ('1','1.0','2','2.0','JRA','NAR')) invalid_scope,
-              count(*) FILTER (WHERE try_cast(label_win as double) NOT IN (0,1) OR label_win IS NULL) invalid_win,
-              count(*) FILTER (WHERE try_cast(label_top2 as double) NOT IN (0,1) OR label_top2 IS NULL) invalid_top2,
-              count(*) FILTER (WHERE try_cast(label_top3 as double) NOT IN (0,1) OR label_top3 IS NULL) invalid_top3,
+              count(*) FILTER (
+                WHERE race_scope_cd IS NULL
+                   OR cast(race_scope_cd as varchar) NOT IN ('1','1.0','2','2.0','JRA','NAR')
+              ) invalid_scope,
+              count(*) FILTER (
+                WHERE try_cast(label_win as double) IS NULL
+                   OR try_cast(label_win as double) NOT IN (0,1)
+              ) invalid_win,
+              count(*) FILTER (
+                WHERE try_cast(label_top2 as double) IS NULL
+                   OR try_cast(label_top2 as double) NOT IN (0,1)
+              ) invalid_top2,
+              count(*) FILTER (
+                WHERE try_cast(label_top3 as double) IS NULL
+                   OR try_cast(label_top3 as double) NOT IN (0,1)
+              ) invalid_top3,
               count(*) FILTER (
                 WHERE try_cast(label_win as double) > try_cast(label_top2 as double)
                    OR try_cast(label_top2 as double) > try_cast(label_top3 as double)
