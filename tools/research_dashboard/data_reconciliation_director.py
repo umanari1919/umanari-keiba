@@ -8,7 +8,7 @@ ROOT=Path(os.environ.get('THE_JOCKEY_RESEARCH_ROOT',Path.home()/'Downloads'/'THE
 CORE=ROOT/'CORE';DATA=CORE/'data';REPORTS=CORE/'reports';CHECK=ROOT/'checkpoints';LOG=ROOT/'logs'/'data_reconciliation_director.log'
 STATE=CHECK/'data_reconciliation_director_state.json';SUMMARY=REPORTS/'DATA_RECONCILIATION_summary.json';LEDGER=REPORTS/'DATA_RECONCILIATION_ledger.csv';PLAN=REPORTS/'DATA_RECONCILIATION_plan.json'
 BASE=DATA/'CORE-003B_historical_features.csv';INVENTORY=REPORTS/'DATA_INVENTORY_summary.json';INTERVAL=max(120,int(os.environ.get('THE_JOCKEY_RECONCILIATION_INTERVAL','600')))
-DEFAULT_INBOX=[ROOT/'incoming',ROOT/'imports',CORE/'incoming',DATA/'incoming']
+DEFAULT_INBOX=[ROOT/'canonicalization'/'outbox',ROOT/'incoming',ROOT/'imports',CORE/'incoming',DATA/'incoming']
 for p in (REPORTS,CHECK,LOG.parent):p.mkdir(parents=True,exist_ok=True)
 
 def now():return datetime.now().astimezone().isoformat()
@@ -107,7 +107,6 @@ def run_once():
                 dst.write(b)
         for frame in accepted_frames:
             frame.to_csv(tmp,mode='a',header=False,index=False,encoding='utf-8')
-        # final integrity guard before atomic replacement
         check=pd.read_csv(tmp,usecols=['race_horse_id','race_id','race_date','race_scope_cd','label_win','label_top2','label_top3'],low_memory=False)
         if check['race_horse_id'].astype(str).duplicated().any():
             tmp.unlink(missing_ok=True);raise RuntimeError('reconciled file would contain duplicate race_horse_id')
