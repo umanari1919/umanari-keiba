@@ -90,6 +90,63 @@ def test_optuna5_advisor_uses_selection_metric_only():
     assert all(c["optimization_metric"] == "SELECTION_LOGLOSS_ONLY" for c in candidates)
 
 
+def test_immutable_canonical_store_bootstrap_merge_and_rollback(tmp_path):
+    mod = load("canonical_store")
+    mod.ROOT = tmp_path
+    mod.STORE = tmp_path / "CORE" / "canonical_store"
+    mod.VERSIONS = mod.STORE / "versions"
+    mod.CURRENT = mod.STORE / "current.json"
+    mod.VERSIONS.mkdir(parents=True, exist_ok=True)
+
+    cols = ["race_id","race_horse_id","horse_id","race_date","race_scope_cd","label_win","label_top2","label_top3","prior_start_count"]
+    legacy = tmp_path / "legacy.csv"
+    pd.DataFrame([
+        ["R1","R1-H1","H1","2026-01-01",1,1,1,1,3],
+        ["R1","R1-H2","H2","2026-01-01",1,0,1,1,4],
+    ], columns=cols).to_csv(legacy,index=False)
+    legacy_sha = mod.sha256_file(legacy)
+
+    boot = mod.bootstrap_from_legacy(legacy)
+    assert boot["mode"] == "BOOTSTRAP_LEGACY"
+    assert boot["audit"]["status"] == "PASS"
+    boot_version = boot["version_id"]
+    assert mod.current_data_path().suffix == ".parquet"
+
+    candidate = tmp_path / "candidate.csv"
+    pd.DataFrame([
+        ["R1","R1-H2","H2","2026-01-01",1,0,1,1,4],
+        ["R2","R2-H3","H3","2026-01-02",2,1,1,1,2],
+    ], columns=cols).to_csv(candidate,index=False)
+    assert mod.overlap_count(mod.current_data_path(),candidate) == 1
+    merged = mod.build_merged_version(mod.current_data_path(),[candidate])
+    assert merged["audit"]["status"] == "PASS"
+    assert merged["added_rows"] == 1
+    assert merged["audit"]["stats"]["rows"] == 3
+    assert merged["parent_version_id"] == boot_version
+    assert mod.sha256_file(legacy) == legacy_sha
+
+    mod.rollback(boot_version)
+    assert mod.current_manifest()["version_id"] == boot_version
+    assert mod.current_manifest()["audit"]["stats"]["rows"] == 2
+
+
+def test_immutable_canonical_store_rejects_malformed_label(tmp_path):
+    mod = load("canonical_store")
+    mod.ROOT = tmp_path
+    mod.STORE = tmp_path / "CORE" / "canonical_store"
+    mod.VERSIONS = mod.STORE / "versions"
+    mod.CURRENT = mod.STORE / "current.json"
+    mod.VERSIONS.mkdir(parents=True, exist_ok=True)
+    bad = tmp_path / "bad.csv"
+    pd.DataFrame({
+        "race_id":["R1"],"race_horse_id":["R1-H1"],"horse_id":["H1"],"race_date":["2026-01-01"],
+        "race_scope_cd":[1],"label_win":["oops"],"label_top2":[1],"label_top3":[1],
+    }).to_csv(bad,index=False)
+    audit = mod.validate_dataset(bad)
+    assert audit["status"] == "BLOCKED"
+    assert any(x.startswith("invalid_win:") for x in audit["issues"])
+
+
 def test_research_lab_python_files_parse():
     import ast
     for path in LAB.glob("*.py"):
