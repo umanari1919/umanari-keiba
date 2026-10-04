@@ -4,7 +4,7 @@ from datetime import datetime
 from pathlib import Path
 ROOT=Path(os.environ.get('THE_JOCKEY_RESEARCH_ROOT',Path.home()/'Downloads'/'THE-JOCKEY-RESEARCH'));CHECK=ROOT/'checkpoints';REPORTS=ROOT/'CORE'/'reports'
 STATE=CHECK/'pipeline_orchestrator_state.json';PLAN=REPORTS/'ORCHESTRATION_plan.json';CONTROL=REPORTS/'OPERATION_control.json'
-ORDER=['data_inventory_director','data_reconciliation_director','research_director','temporal_sample_optimizer','universal_model_director','feature_research_director','experiment_director','hypothesis_generator','probability_director','domain_research_director','ensemble_director']
+ORDER=['data_inventory_director','data_reconciliation_director','research_director','temporal_sample_optimizer','universal_model_director','feature_research_director','experiment_director','hypothesis_generator','probability_director','domain_research_director','ensemble_director','race_simulation_director','decision_strategy_director','blind_evaluation_director','failure_analysis_director']
 STATE_FILES={n:CHECK/f'{n}_state.json' for n in ORDER}
 for p in (CHECK,REPORTS):p.mkdir(parents=True,exist_ok=True)
 def now():return datetime.now().astimezone().isoformat()
@@ -19,9 +19,11 @@ def run_once(schema=None,leak=None,resource=None):
  elif leak.get('status')=='BLOCKED':blocked=True;reason='LEAKAGE_BLOCKED'
  elif resource.get('mode')=='PAUSE_EXPERIMENTS':reason='RESOURCE_PAUSE'
  else:reason='NORMAL'
+ downstream={'universal_model_director','feature_research_director','experiment_director','hypothesis_generator','probability_director','domain_research_director','ensemble_director','race_simulation_director','decision_strategy_director'}
  for n in ORDER:
   st=readj(STATE_FILES[n],{}) or {};desired='RUN'
-  if blocked and n in {'universal_model_director','feature_research_director','experiment_director','hypothesis_generator','probability_director','domain_research_director','ensemble_director'}:desired='HOLD'
-  if resource.get('mode')=='PAUSE_EXPERIMENTS' and n in {'experiment_director','hypothesis_generator'}:desired='HOLD'
+  if blocked and n in downstream:desired='HOLD'
+  if resource.get('mode')=='PAUSE_EXPERIMENTS' and n in {'experiment_director','hypothesis_generator','race_simulation_director','decision_strategy_director'}:desired='HOLD'
+  # Blind/failure audit remain available whenever their frozen/scored inputs exist; they do not feed model promotion.
   steps.append({'worker':n,'desired':desired,'current':st.get('status','UNKNOWN'),'updated':st.get('updated')})
  out={'updated':now(),'status':'BLOCKED' if blocked else ('THROTTLED' if reason=='RESOURCE_PAUSE' else 'PASS'),'reason':reason,'steps':steps,'control':control};writej(PLAN,out);writej(STATE,{'pid':os.getpid(),'updated':now(),'status':out['status'],'reason':reason});return out
