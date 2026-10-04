@@ -27,7 +27,7 @@ $Workers = @(
     @{File='autonomy_supervisor.py'; Label='Autonomy Supervisor'},
     @{File='lab_updater.py'; Label='Lab Updater'}
 )
-$RequiredModules = @('source_adapter_runtime.py','chunked_source_staging_director.py','staging_canonical_bridge.py','research_material_engine.py','mission_portfolio.py','canonical_store.py','modern_data_engine.py','modern_contracts.py','experiment_tracking.py','schema_contract_director.py','resource_manager_director.py','leakage_guard_director.py','backup_rollback_director.py','pipeline_orchestrator.py')
+$RequiredModules = @('source_adapter_runtime.py','chunked_source_staging_director.py','staging_canonical_bridge.py','conflict_resolution_director.py','data_lineage.py','research_material_engine.py','mission_portfolio.py','canonical_store.py','modern_data_engine.py','modern_contracts.py','experiment_tracking.py','schema_contract_director.py','resource_manager_director.py','leakage_guard_director.py','backup_rollback_director.py','pipeline_orchestrator.py')
 $Dashboard = Join-Path $Root 'dashboard_server.py'
 foreach ($w in $Workers) { $w.Path = Join-Path $Root $w.File; if (-not (Test-Path $w.Path)) { throw "必要ファイルが見つかりません: $($w.Path)" } }
 foreach ($m in $RequiredModules) { if (-not (Test-Path (Join-Path $Root $m))) { throw "統制/高速化モジュールが見つかりません: $m" } }
@@ -42,6 +42,8 @@ Write-Host 'Mission Portfolio: automatic priority / next mission / worker focus'
 Write-Host 'Source Adapter   : PostgreSQL/MySQL READ-ONLY discovery / NO GUESSING'
 Write-Host 'Source Staging   : ON-DEMAND / CHUNKED / RESUMABLE / SHA256'
 Write-Host 'Canonical Bridge : ON-DEMAND / NEW-DUPLICATE-CONFLICT CLASSIFICATION'
+Write-Host 'Conflict Resolver: ON-DEMAND / EVIDENCE-BASED / NO AUTO OVERWRITE'
+Write-Host 'Data Lineage     : APPEND-ONLY / SHA256 / SOURCE→CANONICAL TRACE'
 Write-Host 'Canonical Store  : immutable Parquet / manifest / rollback'
 Write-Host 'Chief Operating  : portfolio executive mode'
 Write-Host 'Dashboard        : http://127.0.0.1:8791'
