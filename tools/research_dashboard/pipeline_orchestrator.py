@@ -1,0 +1,27 @@
+from __future__ import annotations
+import json,os
+from datetime import datetime
+from pathlib import Path
+ROOT=Path(os.environ.get('THE_JOCKEY_RESEARCH_ROOT',Path.home()/'Downloads'/'THE-JOCKEY-RESEARCH'));CHECK=ROOT/'checkpoints';REPORTS=ROOT/'CORE'/'reports'
+STATE=CHECK/'pipeline_orchestrator_state.json';PLAN=REPORTS/'ORCHESTRATION_plan.json';CONTROL=REPORTS/'OPERATION_control.json'
+ORDER=['data_inventory_director','data_reconciliation_director','research_director','temporal_sample_optimizer','universal_model_director','feature_research_director','experiment_director','hypothesis_generator','probability_director','domain_research_director','ensemble_director']
+STATE_FILES={n:CHECK/f'{n}_state.json' for n in ORDER}
+for p in (CHECK,REPORTS):p.mkdir(parents=True,exist_ok=True)
+def now():return datetime.now().astimezone().isoformat()
+def readj(p,d=None):
+ try:return json.loads(p.read_text(encoding='utf-8-sig'))
+ except Exception:return d
+def writej(p,o):
+ t=p.with_suffix(p.suffix+'.tmp');t.write_text(json.dumps(o,ensure_ascii=False,indent=2),encoding='utf-8');t.replace(p)
+def run_once(schema=None,leak=None,resource=None):
+ schema=schema or {};leak=leak or {};resource=resource or {};control=readj(CONTROL,{}) or {};steps=[];blocked=False
+ if schema.get('status')=='BLOCKED':blocked=True;reason='SCHEMA_BLOCKED'
+ elif leak.get('status')=='BLOCKED':blocked=True;reason='LEAKAGE_BLOCKED'
+ elif resource.get('mode')=='PAUSE_EXPERIMENTS':reason='RESOURCE_PAUSE'
+ else:reason='NORMAL'
+ for n in ORDER:
+  st=readj(STATE_FILES[n],{}) or {};desired='RUN'
+  if blocked and n in {'universal_model_director','feature_research_director','experiment_director','hypothesis_generator','probability_director','domain_research_director','ensemble_director'}:desired='HOLD'
+  if resource.get('mode')=='PAUSE_EXPERIMENTS' and n in {'experiment_director','hypothesis_generator'}:desired='HOLD'
+  steps.append({'worker':n,'desired':desired,'current':st.get('status','UNKNOWN'),'updated':st.get('updated')})
+ out={'updated':now(),'status':'BLOCKED' if blocked else ('THROTTLED' if reason=='RESOURCE_PAUSE' else 'PASS'),'reason':reason,'steps':steps,'control':control};writej(PLAN,out);writej(STATE,{'pid':os.getpid(),'updated':now(),'status':out['status'],'reason':reason});return out
