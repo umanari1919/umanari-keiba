@@ -33,19 +33,19 @@ def start_worker(name):
  try:
   p=subprocess.Popen([sys.executable,str(script)],cwd=str(ROOT),stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL,creationflags=flags,env={**os.environ,'THE_JOCKEY_RESEARCH_ROOT':str(ROOT)});log(f'CHIEF START {name} pid={p.pid}');return True
  except Exception as e:log(f'CHIEF START FAILED {name}: {e!r}');return False
-def enforce(o,r):
- actions=[];hold={x['worker'] for x in o.get('steps',[]) if x.get('desired')=='HOLD'}
- for n in ['experiment_director','hypothesis_generator']:
-  if n in hold:
+def enforce(o,r,portfolio):
+ actions=[];hold={x['worker'] for x in o.get('steps',[]) if x.get('desired')=='HOLD'};desired=set(portfolio.get('desired_workers',[]))
+ costly={'feature_research_director','experiment_director','hypothesis_generator','domain_research_director','ensemble_director','decision_strategy_director'}
+ for n in costly:
+  if n in hold or n not in desired or r.get('mode')=='PAUSE_EXPERIMENTS':
    if stop_worker(n):actions.append(f'STOP:{n}')
-  elif r.get('mode')!='PAUSE_EXPERIMENTS':
+  else:
    if start_worker(n):actions.append(f'START:{n}')
  return actions
 def enforce_production_hold(status,blockers):
  path=PROD/'production_manifest.json';m=readj(path,{}) or {}
  if status=='BLOCKED':
-  m.update({'status':'HOLD','governance_hold':True,'governance_blockers':blockers,'governance_updated':now(),'auto_betting':False})
-  writej(path,m);return True
+  m.update({'status':'HOLD','governance_hold':True,'governance_blockers':blockers,'governance_updated':now(),'auto_betting':False});writej(path,m);return True
  if m.get('governance_hold'):
   m['governance_hold']=False;m['governance_blockers']=[];m['governance_updated']=now();writej(path,m)
  return False
@@ -56,16 +56,22 @@ def run_once():
  import leakage_guard_director as leakage
  import backup_rollback_director as backup
  import pipeline_orchestrator as orchestrator
- f=foundation.run_once();s=schema.run_once();r=resource.run_once();l=leakage.run_once();b=backup.run_once();o=orchestrator.run_once(s,l,r,f);actions=enforce(o,r)
+ import research_material_engine as material_engine
+ import mission_portfolio as portfolio_engine
+ f=foundation.run_once();s=schema.run_once();r=resource.run_once();l=leakage.run_once();b=backup.run_once()
+ materials=material_engine.run_once();portfolio=portfolio_engine.run_once(materials,r,f);o=orchestrator.run_once(s,l,r,f,portfolio);actions=enforce(o,r,portfolio)
  blockers=[]
  if f.get('status')=='BLOCKED':blockers.append('FOUNDATION')
  if s.get('status')=='BLOCKED':blockers.append('SCHEMA')
  if l.get('status')=='BLOCKED':blockers.append('LEAKAGE')
- status='BLOCKED' if blockers else ('DEGRADED' if f.get('status')=='WARN' or r.get('mode')!='TURBO' or o.get('status')!='PASS' else 'PASS');prod_hold=enforce_production_hold(status,blockers)
- out={'pid':os.getpid(),'updated':now(),'status':status,'blockers':blockers,'actions':actions,'production_hold':prod_hold,'foundation':{'status':f.get('status'),'blockers':f.get('blocker_count'),'warnings':f.get('warning_count')},'schema':s,'resources':r,'leakage':l,'backup':{'status':b.get('status'),'snapshot':b.get('snapshot'),'items':len(b.get('items',[]))},'orchestration':o}
- writej(STATE,out);writej(REPORTS/'CHIEF_OPERATING_report.json',out);log(f"CHIEF {status} blockers={blockers} resource={r.get('mode')} orchestration={o.get('status')} actions={actions} prod_hold={prod_hold}");return out
+ status='BLOCKED' if blockers else ('DEGRADED' if f.get('status')=='WARN' or r.get('mode')!='TURBO' or o.get('status') not in {'PASS','FOCUSED'} else 'PASS');prod_hold=enforce_production_hold(status,blockers)
+ out={'pid':os.getpid(),'updated':now(),'status':status,'blockers':blockers,'actions':actions,'production_hold':prod_hold,
+      'next_mission':portfolio.get('next_mission'),'portfolio_mode':portfolio.get('mode'),'active_missions':portfolio.get('active_missions',[]),
+      'research_material_count':materials.get('count',0),'foundation':{'status':f.get('status'),'blockers':f.get('blocker_count'),'warnings':f.get('warning_count')},
+      'schema':s,'resources':r,'leakage':l,'backup':{'status':b.get('status'),'snapshot':b.get('snapshot'),'items':len(b.get('items',[]))},'orchestration':o}
+ writej(STATE,out);writej(REPORTS/'CHIEF_OPERATING_report.json',out);log(f"CHIEF {status} next={portfolio.get('next_mission',{}).get('key')} mode={portfolio.get('mode')} resource={r.get('mode')} actions={actions}");return out
 def main():
- log('CHIEF OPERATING DIRECTOR START')
+ log('CHIEF OPERATING DIRECTOR START v2 PORTFOLIO MODE')
  while True:
   try:run_once()
   except Exception:
