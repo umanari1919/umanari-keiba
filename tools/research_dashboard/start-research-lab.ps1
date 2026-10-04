@@ -14,6 +14,7 @@ $Workers = @(
     @{File='hypothesis_generator.py'; Label='Hypothesis Generator'},
     @{File='domain_research_director.py'; Label='Domain Research Director'},
     @{File='ensemble_director.py'; Label='Ensemble Director'},
+    @{File='blind_evaluation_director.py'; Label='Blind Evaluation Director'},
     @{File='chief_operating_director.py'; Label='Chief Operating Director'},
     @{File='autonomy_supervisor.py'; Label='Autonomy Supervisor'},
     @{File='lab_updater.py'; Label='Lab Updater'}
@@ -32,6 +33,7 @@ Write-Host 'Data Control    : inventory / reconciliation / schema contract'
 Write-Host 'Time Splits     : auto-optimized'
 Write-Host 'Research        : autonomous / orchestrated'
 Write-Host 'Experiments     : TURBO with resource governor'
+Write-Host 'Blind Test      : FORWARD / SHA256 SEALED'
 Write-Host 'Leakage Guard   : enforced'
 Write-Host 'Backup          : daily governance snapshot'
 Write-Host 'Chief Operating : enabled'
