@@ -53,17 +53,18 @@ def run_once():
  import backup_rollback_director as backup
  import pipeline_orchestrator as orchestrator
  import research_factory_director as research_factory
+ import research_brief_director as research_brief
  import research_material_engine as material_engine
  import mission_portfolio as portfolio_engine
- f=foundation.run_once();s=schema.run_once();r=resource.run_once();l=leakage.run_once();b=backup.run_once();factory=research_factory.run_once();materials=material_engine.run_once();portfolio=portfolio_engine.run_once(materials,r,f);o=orchestrator.run_once(s,l,r,f,portfolio);actions=enforce(o,r,portfolio);blockers=[]
+ f=foundation.run_once();s=schema.run_once();r=resource.run_once();l=leakage.run_once();b=backup.run_once();factory=research_factory.run_once();briefs=research_brief.run_once();materials=material_engine.run_once();portfolio=portfolio_engine.run_once(materials,r,f);o=orchestrator.run_once(s,l,r,f,portfolio);actions=enforce(o,r,portfolio);blockers=[]
  if f.get('status')=='BLOCKED':blockers.append('FOUNDATION')
  if s.get('status')=='BLOCKED':blockers.append('SCHEMA')
  if l.get('status')=='BLOCKED':blockers.append('LEAKAGE')
  status='BLOCKED' if blockers else ('DEGRADED' if f.get('status')=='WARN' or r.get('mode')!='TURBO' or o.get('status') not in {'PASS','FOCUSED'} else 'PASS');prod_hold=enforce_production_hold(status,blockers)
- out={'pid':os.getpid(),'updated':now(),'status':status,'blockers':blockers,'actions':actions,'production_hold':prod_hold,'next_mission':portfolio.get('next_mission'),'portfolio_mode':portfolio.get('mode'),'active_missions':portfolio.get('active_missions',[]),'research_material_count':materials.get('count',0),'research_factory':{'status':factory.get('status'),'ideas':factory.get('ideas'),'ready':factory.get('ready'),'needs_data':factory.get('needs_data')},'foundation':{'status':f.get('status'),'blockers':f.get('blocker_count'),'warnings':f.get('warning_count')},'schema':s,'resources':r,'leakage':l,'backup':{'status':b.get('status'),'snapshot':b.get('snapshot'),'items':len(b.get('items',[]))},'orchestration':o}
- writej(STATE,out);writej(REPORTS/'CHIEF_OPERATING_report.json',out);log(f"CHIEF {status} next={portfolio.get('next_mission',{}).get('key')} mode={portfolio.get('mode')} factory_ready={factory.get('ready')} resource={r.get('mode')} actions={actions}");return out
+ out={'pid':os.getpid(),'updated':now(),'status':status,'blockers':blockers,'actions':actions,'production_hold':prod_hold,'next_mission':portfolio.get('next_mission'),'portfolio_mode':portfolio.get('mode'),'active_missions':portfolio.get('active_missions',[]),'research_material_count':materials.get('count',0),'research_factory':{'status':factory.get('status'),'ideas':factory.get('ideas'),'ready':factory.get('ready'),'needs_data':factory.get('needs_data')},'research_briefs':{'status':briefs.get('status'),'count':briefs.get('count') or briefs.get('briefs'),'split_id':briefs.get('split_id')},'foundation':{'status':f.get('status'),'blockers':f.get('blocker_count'),'warnings':f.get('warning_count')},'schema':s,'resources':r,'leakage':l,'backup':{'status':b.get('status'),'snapshot':b.get('snapshot'),'items':len(b.get('items',[]))},'orchestration':o}
+ writej(STATE,out);writej(REPORTS/'CHIEF_OPERATING_report.json',out);log(f"CHIEF {status} next={portfolio.get('next_mission',{}).get('key')} mode={portfolio.get('mode')} factory_ready={factory.get('ready')} briefs={briefs.get('count') or briefs.get('briefs')} resource={r.get('mode')} actions={actions}");return out
 def main():
- log('CHIEF OPERATING DIRECTOR START v3 RESEARCH FACTORY MODE')
+ log('CHIEF OPERATING DIRECTOR START v4 RESEARCH BRIEF MODE')
  while True:
   try:run_once()
   except Exception:
