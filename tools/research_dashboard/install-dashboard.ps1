@@ -2,7 +2,7 @@ $ErrorActionPreference = 'Stop'
 $Root = if ($env:THE_JOCKEY_RESEARCH_ROOT) { $env:THE_JOCKEY_RESEARCH_ROOT } else { Join-Path $HOME 'Downloads\THE-JOCKEY-RESEARCH' }
 New-Item -ItemType Directory -Force -Path $Root | Out-Null
 $Base = 'https://raw.githubusercontent.com/umanari1919/umanari-keiba/main/tools/research_dashboard'
-$Names = @('dashboard_server.py','start-dashboard.ps1','foundation_selftest_director.py','research_director.py','data_inventory_director.py','canonicalization_director.py','data_reconciliation_director.py','temporal_sample_optimizer.py','universal_model_director.py','probability_director.py','race_simulation_director.py','decision_strategy_director.py','failure_analysis_director.py','meta_research_director.py','feature_research_director.py','experiment_director.py','hypothesis_generator.py','domain_research_director.py','ensemble_director.py','blind_evaluation_director.py','schema_contract_director.py','resource_manager_director.py','leakage_guard_director.py','backup_rollback_director.py','pipeline_orchestrator.py','chief_operating_director.py','autonomy_supervisor.py','start-research-lab.ps1','lab_updater.py')
+$Names = @('dashboard_server.py','start-dashboard.ps1','foundation_selftest_director.py','dependency_guard.py','modern_data_engine.py','modern_contracts.py','experiment_tracking.py','mlflow_mirror_director.py','research_director.py','data_inventory_director.py','canonicalization_director.py','data_reconciliation_director.py','temporal_sample_optimizer.py','universal_model_director.py','probability_director.py','race_simulation_director.py','decision_strategy_director.py','failure_analysis_director.py','meta_research_director.py','feature_research_director.py','experiment_director.py','hypothesis_generator.py','domain_research_director.py','ensemble_director.py','blind_evaluation_director.py','schema_contract_director.py','resource_manager_director.py','leakage_guard_director.py','backup_rollback_director.py','pipeline_orchestrator.py','chief_operating_director.py','autonomy_supervisor.py','start-research-lab.ps1','lab_updater.py')
 foreach ($Name in $Names) {
     $Out = Join-Path $Root $Name
     $Uri = "${Base}/${Name}?nocache=$([guid]::NewGuid())"
@@ -10,8 +10,13 @@ foreach ($Name in $Names) {
     Write-Host "Installed: $Out"
 }
 Write-Host ''
-Write-Host 'THE JOCKEY Foundation-Hardened Autonomous Research Lab installed.'
+Write-Host 'THE JOCKEY Modern-Stack Autonomous Research Lab installed.'
 Write-Host 'Foundation Self-Test  : ENABLED'
+Write-Host 'Dependency Guard      : ENABLED / NO AUTO-UPGRADE'
+Write-Host 'Modern Data Engine    : DuckDB / Polars / Arrow OPTIONAL'
+Write-Host 'Modern Data Contracts : Pydantic / Pandera OPTIONAL + FALLBACK'
+Write-Host 'Optuna 5 Advisor      : ENABLED WHEN INSTALLED / SELECTION-ONLY'
+Write-Host 'MLflow Mirror         : OPTIONAL / CSV LEDGER IS SOURCE OF TRUTH'
 Write-Host 'Canonicalization      : ENABLED / CONTRACT-GATED'
 Write-Host 'Self Update           : ENABLED'
 Write-Host 'Auto Recovery         : ENABLED'

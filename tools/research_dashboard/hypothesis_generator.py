@@ -8,16 +8,8 @@ import numpy as np
 import pandas as pd
 
 ROOT = Path(os.environ.get('THE_JOCKEY_RESEARCH_ROOT', Path.home()/'Downloads'/'THE-JOCKEY-RESEARCH'))
-REPORTS = ROOT/'CORE'/'reports'
-CHECK = ROOT/'checkpoints'
-LOG = ROOT/'logs'/'hypothesis_generator.log'
-LEDGER = REPORTS/'EXPERIMENT_ledger.csv'
-QUEUE = REPORTS/'HYPOTHESIS_queue.json'
-PLAN = REPORTS/'TEMPORAL_SPLIT_plan.json'
-STATE = CHECK/'hypothesis_generator_state.json'
-INTERVAL = int(os.environ.get('THE_JOCKEY_HYPOTHESIS_INTERVAL','60'))
-MIN_RESULTS = int(os.environ.get('THE_JOCKEY_HYPOTHESIS_MIN_RESULTS','12'))
-MAX_QUEUE = int(os.environ.get('THE_JOCKEY_HYPOTHESIS_QUEUE','72'))
+REPORTS = ROOT/'CORE'/'reports';CHECK = ROOT/'checkpoints';LOG = ROOT/'logs'/'hypothesis_generator.log';LEDGER = REPORTS/'EXPERIMENT_ledger.csv';QUEUE = REPORTS/'HYPOTHESIS_queue.json';PLAN = REPORTS/'TEMPORAL_SPLIT_plan.json';STATE = CHECK/'hypothesis_generator_state.json'
+INTERVAL = int(os.environ.get('THE_JOCKEY_HYPOTHESIS_INTERVAL','60'));MIN_RESULTS = int(os.environ.get('THE_JOCKEY_HYPOTHESIS_MIN_RESULTS','12'));MAX_QUEUE = int(os.environ.get('THE_JOCKEY_HYPOTHESIS_QUEUE','72'))
 for p in (REPORTS,CHECK,LOG.parent): p.mkdir(parents=True,exist_ok=True)
 
 def now(): return datetime.now().astimezone().isoformat()
@@ -40,68 +32,88 @@ def split_id(plan):
         parts.extend([name,str(s.get('start_date')),str(s.get('end_date'))])
     return hashlib.sha256('|'.join(parts).encode()).hexdigest()[:16]
 
-def build_candidates(df:pd.DataFrame):
-    if df.empty:return []
+def metric_frame(df):
     good=df[df.status.isin(['PROMOTE','KEEP'])].copy()
-    if len(good)<MIN_RESULTS:return []
     metric='selection_logloss' if 'selection_logloss' in good.columns else 'select_2024_logloss'
-    if metric not in good.columns:return []
-    good[metric]=pd.to_numeric(good[metric],errors='coerce')
-    good=good.dropna(subset=[metric])
-    if good.empty:return []
+    if metric not in good.columns:return good.iloc[0:0],metric
+    good[metric]=pd.to_numeric(good[metric],errors='coerce');good=good.dropna(subset=[metric])
+    return good,metric
+
+def build_optuna_candidates(df:pd.DataFrame):
+    try:
+        import optuna
+        from optuna.distributions import CategoricalDistribution, FloatDistribution, IntDistribution
+        from optuna.trial import TrialState, create_trial
+    except Exception:return []
+    good,metric=metric_frame(df)
+    if len(good)<MIN_RESULTS:return []
     out=[]
     for target,g in good.groupby('target'):
-        elite=g.nsmallest(min(8,len(g)),metric)
-        fsets=elite['feature_set'].value_counts().index.tolist()[:2] or ['FIELD']
-        depths=sorted(set(pd.to_numeric(elite['depth'],errors='coerce').dropna().astype(int).tolist()))
-        lrs=sorted(set(pd.to_numeric(elite['lr'],errors='coerce').dropna().astype(float).tolist()))
-        l2s=sorted(set(pd.to_numeric(elite['l2'],errors='coerce').dropna().astype(float).tolist()))
-        iters=sorted(set(pd.to_numeric(elite['iters'],errors='coerce').dropna().astype(int).tolist()))
-        center_depth=int(round(np.median(depths))) if depths else 6
-        center_lr=float(np.median(lrs)) if lrs else .03
-        center_l2=float(np.median(l2s)) if l2s else 8.0
-        center_iters=int(round(np.median(iters))) if iters else 900
-        depth_opts=sorted(set(max(3,min(10,x)) for x in [center_depth-1,center_depth,center_depth+1]))
-        lr_opts=sorted(set(max(.008,min(.12,x)) for x in [center_lr*.75,center_lr,center_lr*1.25]))
-        l2_opts=sorted(set(max(1.0,min(30.0,x)) for x in [center_l2*.7,center_l2,center_l2*1.4]))
-        iter_opts=sorted(set(max(300,min(1800,int(x))) for x in [center_iters*.8,center_iters,center_iters*1.2]))
-        seeds=[20261201,20261217,20270103]
-        rank=0
+        fsets=sorted(set(g['feature_set'].astype(str))) or ['FIELD','HIST','COMPACT']
+        distributions={
+            'feature_set':CategoricalDistribution(fsets),
+            'depth':IntDistribution(3,10),
+            'lr':FloatDistribution(.008,.12,log=True),
+            'l2':FloatDistribution(1.0,30.0,log=True),
+            'iters':IntDistribution(300,1800),
+        }
+        study=optuna.create_study(direction='minimize',sampler=optuna.samplers.TPESampler(seed=20261004,multivariate=True),study_name=f'THE-JOCKEY-{target}')
+        for _,r in g.iterrows():
+            try:
+                params={'feature_set':str(r.feature_set),'depth':int(r.depth),'lr':float(r.lr),'l2':float(r.l2),'iters':int(r.iters)}
+                if params['feature_set'] not in fsets:continue
+                trial=create_trial(params=params,distributions=distributions,value=float(r[metric]),state=TrialState.COMPLETE)
+                study.add_trial(trial)
+            except Exception:continue
+        if not study.trials:continue
+        n=max(6,min(MAX_QUEUE//max(1,good.target.nunique()),24))
+        for rank in range(n):
+            t=study.ask()
+            fset=t.suggest_categorical('feature_set',fsets);d=t.suggest_int('depth',3,10);lr=t.suggest_float('lr',.008,.12,log=True);l2=t.suggest_float('l2',1.0,30.0,log=True);iters=t.suggest_int('iters',300,1800)
+            seed=[20261201,20261217,20270103][rank%3]
+            out.append({'source':'OPTUNA5_TPE','generation':2,'target':target,'feature_set':str(fset),'config':f'O5_D{d}_LR{lr:.5f}_L2{l2:.2f}_I{iters}','depth':int(d),'lr':float(round(lr,7)),'l2':float(round(l2,5)),'iters':int(iters),'seed':int(seed),'priority':rank,'optimization_metric':'SELECTION_LOGLOSS_ONLY'})
+    seen=set();uniq=[]
+    for c in out:
+        k=f"{c['target']}|{c['feature_set']}|{c['config']}|{c['seed']}"
+        if k not in seen:seen.add(k);uniq.append(c)
+    return uniq[:MAX_QUEUE]
+
+def build_manual_candidates(df:pd.DataFrame):
+    if df.empty:return []
+    good,metric=metric_frame(df)
+    if len(good)<MIN_RESULTS:return []
+    out=[]
+    for target,g in good.groupby('target'):
+        elite=g.nsmallest(min(8,len(g)),metric);fsets=elite['feature_set'].value_counts().index.tolist()[:2] or ['FIELD']
+        depths=sorted(set(pd.to_numeric(elite['depth'],errors='coerce').dropna().astype(int).tolist()));lrs=sorted(set(pd.to_numeric(elite['lr'],errors='coerce').dropna().astype(float).tolist()));l2s=sorted(set(pd.to_numeric(elite['l2'],errors='coerce').dropna().astype(float).tolist()));iters=sorted(set(pd.to_numeric(elite['iters'],errors='coerce').dropna().astype(int).tolist()))
+        center_depth=int(round(np.median(depths))) if depths else 6;center_lr=float(np.median(lrs)) if lrs else .03;center_l2=float(np.median(l2s)) if l2s else 8.0;center_iters=int(round(np.median(iters))) if iters else 900
+        depth_opts=sorted(set(max(3,min(10,x)) for x in [center_depth-1,center_depth,center_depth+1]));lr_opts=sorted(set(max(.008,min(.12,x)) for x in [center_lr*.75,center_lr,center_lr*1.25]));l2_opts=sorted(set(max(1.0,min(30.0,x)) for x in [center_l2*.7,center_l2,center_l2*1.4]));iter_opts=sorted(set(max(300,min(1800,int(x))) for x in [center_iters*.8,center_iters,center_iters*1.2]));seeds=[20261201,20261217,20270103];rank=0
         for fset in fsets:
             for d in depth_opts:
                 for lr in lr_opts:
                     for l2 in l2_opts:
-                        it=iter_opts[min(rank % len(iter_opts),len(iter_opts)-1)]
-                        seed=seeds[rank % len(seeds)]
-                        out.append({'source':'HYPOTHESIS_GEN','generation':1,'target':target,'feature_set':str(fset),'config':f'G1_D{d}_LR{lr:.4f}_L2{l2:.2f}','depth':int(d),'lr':float(round(lr,6)),'l2':float(round(l2,4)),'iters':int(it),'seed':int(seed),'priority':rank})
-                        rank+=1
+                        it=iter_opts[min(rank % len(iter_opts),len(iter_opts)-1)];seed=seeds[rank % len(seeds)]
+                        out.append({'source':'HYPOTHESIS_GEN','generation':1,'target':target,'feature_set':str(fset),'config':f'G1_D{d}_LR{lr:.4f}_L2{l2:.2f}','depth':int(d),'lr':float(round(lr,6)),'l2':float(round(l2,4)),'iters':int(it),'seed':int(seed),'priority':rank});rank+=1
     seen=set();uniq=[]
     for c in out:
         k=f"{c['target']}|{c['feature_set']}|{c['config']}|{c['seed']}"
-        if k in seen:continue
-        seen.add(k);uniq.append(c)
+        if k not in seen:seen.add(k);uniq.append(c)
     return uniq[:MAX_QUEUE]
 
 def run_once():
     plan=readj(PLAN,{}) or {}
-    if not plan.get('splits') or plan.get('status')=='BLOCKED':
-        write_state('WAITING','Temporal split plan not ready'); return
+    if not plan.get('splits') or plan.get('status')=='BLOCKED':write_state('WAITING','Temporal split plan not ready'); return
     sid=split_id(plan)
-    if not LEDGER.exists():
-        write_state('WAITING','Experiment ledger not available',{'split_id':sid}); return
+    if not LEDGER.exists():write_state('WAITING','Experiment ledger not available',{'split_id':sid}); return
     try:df=pd.read_csv(LEDGER)
-    except Exception as e:
-        write_state('BLOCKED',repr(e)); return
-    if 'split_id' not in df.columns:
-        write_state('WAITING','No experiments for current temporal split',{'split_id':sid}); return
+    except Exception as e:write_state('BLOCKED',repr(e)); return
+    if 'split_id' not in df.columns:write_state('WAITING','No experiments for current temporal split',{'split_id':sid}); return
     df=df[df['split_id'].astype(str)==sid].copy()
-    if len(df)<MIN_RESULTS:
-        write_state('WAITING',f'Need {MIN_RESULTS} completed experiments for current split',{'split_id':sid,'completed':int(len(df))}); return
-    queue=build_candidates(df)
-    payload={'updated':now(),'generation':1,'split_id':sid,'source_rows':int(len(df)),'count':len(queue),'candidates':queue}
-    writej(QUEUE,payload)
-    write_state('PASS','Adaptive hypothesis queue refreshed',{'split_id':sid,'source_rows':int(len(df)),'queue':len(queue)})
-    log(f'HYPOTHESIS QUEUE refreshed split={sid} source_rows={len(df)} queue={len(queue)}')
+    if len(df)<MIN_RESULTS:write_state('WAITING',f'Need {MIN_RESULTS} completed experiments for current split',{'split_id':sid,'completed':int(len(df))}); return
+    queue=build_optuna_candidates(df);engine='OPTUNA5_TPE' if queue else 'MANUAL_FALLBACK'
+    if not queue:queue=build_manual_candidates(df)
+    payload={'updated':now(),'generation':2 if engine=='OPTUNA5_TPE' else 1,'split_id':sid,'source_rows':int(len(df)),'count':len(queue),'advisor':engine,'selection_only_optimization':True,'test_oos_used_for_optimization':False,'candidates':queue}
+    writej(QUEUE,payload);write_state('PASS','Adaptive hypothesis queue refreshed',{'split_id':sid,'source_rows':int(len(df)),'queue':len(queue),'advisor':engine});log(f'HYPOTHESIS QUEUE refreshed split={sid} advisor={engine} source_rows={len(df)} queue={len(queue)}')
 
 def main():
     log('HYPOTHESIS GENERATOR START')
