@@ -26,7 +26,7 @@ $Workers = @(
     @{File='autonomy_supervisor.py'; Label='Autonomy Supervisor'},
     @{File='lab_updater.py'; Label='Lab Updater'}
 )
-$RequiredModules = @('modern_data_engine.py','experiment_tracking.py','schema_contract_director.py','resource_manager_director.py','leakage_guard_director.py','backup_rollback_director.py','pipeline_orchestrator.py')
+$RequiredModules = @('modern_data_engine.py','modern_contracts.py','experiment_tracking.py','schema_contract_director.py','resource_manager_director.py','leakage_guard_director.py','backup_rollback_director.py','pipeline_orchestrator.py')
 $Dashboard = Join-Path $Root 'dashboard_server.py'
 foreach ($w in $Workers) { $w.Path = Join-Path $Root $w.File; if (-not (Test-Path $w.Path)) { throw "必要ファイルが見つかりません: $($w.Path)" } }
 foreach ($m in $RequiredModules) { if (-not (Test-Path (Join-Path $Root $m))) { throw "統制/高速化モジュールが見つかりません: $m" } }
@@ -40,6 +40,7 @@ Write-Host ('uv               : ' + $(if (Get-Command uv -ErrorAction SilentlyCo
 Write-Host 'Foundation Test  : compile / worker coverage / writable dirs'
 Write-Host 'Dependency Guard : stable versions / no auto-upgrade'
 Write-Host 'Data Engine      : DuckDB / Polars / Arrow optional acceleration'
+Write-Host 'Data Contracts   : Pydantic / Pandera optional strengthening'
 Write-Host 'Optuna Advisor   : selection-only TPE / manual fallback'
 Write-Host 'MLflow Mirror    : optional / CSV ledger remains source of truth'
 Write-Host 'Data Control     : inventory / canonicalization / reconciliation'
