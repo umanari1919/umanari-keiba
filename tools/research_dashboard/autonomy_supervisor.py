@@ -5,7 +5,7 @@ from datetime import datetime
 from pathlib import Path
 ROOT=Path(os.environ.get('THE_JOCKEY_RESEARCH_ROOT',Path.home()/'Downloads'/'THE-JOCKEY-RESEARCH'));CORE=ROOT/'CORE';DATA=CORE/'data';REPORTS=CORE/'reports';CHECK=ROOT/'checkpoints';LOGS=ROOT/'logs'
 STATE=CHECK/'autonomy_supervisor_state.json';LOG=LOGS/'autonomy_supervisor.log';PROD=ROOT/'production';INTERVAL=int(os.environ.get('THE_JOCKEY_SUPERVISOR_INTERVAL','60'));MAX_RESTARTS=int(os.environ.get('THE_JOCKEY_MAX_RESTARTS','5'))
-WORKERS={'research_director.py':'research_director_state.json','temporal_sample_optimizer.py':'temporal_sample_optimizer_state.json','universal_model_director.py':'universal_model_director_state.json','probability_director.py':'probability_director_state.json','meta_research_director.py':'meta_research_director_state.json','feature_research_director.py':'feature_research_director_state.json','experiment_director.py':'experiment_director_state.json','hypothesis_generator.py':'hypothesis_generator_state.json','domain_research_director.py':'domain_research_director_state.json','ensemble_director.py':'ensemble_director_state.json'}
+WORKERS={'research_director.py':'research_director_state.json','data_inventory_director.py':'data_inventory_director_state.json','temporal_sample_optimizer.py':'temporal_sample_optimizer_state.json','universal_model_director.py':'universal_model_director_state.json','probability_director.py':'probability_director_state.json','meta_research_director.py':'meta_research_director_state.json','feature_research_director.py':'feature_research_director_state.json','experiment_director.py':'experiment_director_state.json','hypothesis_generator.py':'hypothesis_generator_state.json','domain_research_director.py':'domain_research_director_state.json','ensemble_director.py':'ensemble_director_state.json'}
 BASE='https://raw.githubusercontent.com/umanari1919/umanari-keiba/main/tools/research_dashboard';PLAN=REPORTS/'TEMPORAL_SPLIT_plan.json'
 for p in (CHECK,LOGS,PROD,REPORTS):p.mkdir(parents=True,exist_ok=True)
 def now():return datetime.now().astimezone().isoformat()
@@ -32,7 +32,7 @@ def bootstrap(script):
  path=ROOT/script
  if path.exists():return True
  try:
-  req=urllib.request.Request(f'{BASE}/{script}?t={time.time_ns()}',headers={'User-Agent':'THE-JOCKEY-Autonomy-Supervisor/1.3'})
+  req=urllib.request.Request(f'{BASE}/{script}?t={time.time_ns()}',headers={'User-Agent':'THE-JOCKEY-Autonomy-Supervisor/1.4'})
   with urllib.request.urlopen(req,timeout=30) as r:data=r.read()
   tmp=path.with_suffix(path.suffix+'.bootstrap');tmp.write_bytes(data);tmp.replace(path);log(f'BOOTSTRAP {script}');return True
  except Exception as e:log(f'BOOTSTRAP FAILED {script}: {e!r}');return False
@@ -82,9 +82,9 @@ def worker_health(mem):
   out[script]={'status':status,'pid':pid,'restarts':restarts,'last_state_update':st.get('updated') or st.get('updated_at')}
  return out
 def run_once():
- prev=readj(STATE,{}) or {};workers=worker_health(prev.get('workers',{}));q=quality_audit();d=drift_audit();prod=production_gate(q,d);plan=readj(PLAN,{}) or {};temporal=plan.get('status','WAITING');bad_worker=any(v.get('status') in ('FAILED','DEAD') for v in workers.values());status='BLOCKED' if q.get('status')=='BLOCKED' or temporal=='BLOCKED' else ('DEGRADED' if bad_worker or d.get('status')=='ALERT' else 'PASS');state={'updated':now(),'status':status,'workers':workers,'temporal_plan':{'status':temporal,'date_range':plan.get('date_range'),'population':plan.get('population'),'gates':plan.get('gates')},'data_quality':q,'drift':d,'production':prod};writej(STATE,state);return state
+ prev=readj(STATE,{}) or {};workers=worker_health(prev.get('workers',{}));q=quality_audit();d=drift_audit();prod=production_gate(q,d);plan=readj(PLAN,{}) or {};temporal=plan.get('status','WAITING');inventory=readj(REPORTS/'DATA_INVENTORY_summary.json',{}) or {};bad_worker=any(v.get('status') in ('FAILED','DEAD') for v in workers.values());status='BLOCKED' if q.get('status')=='BLOCKED' or temporal=='BLOCKED' else ('DEGRADED' if bad_worker or d.get('status')=='ALERT' else 'PASS');state={'updated':now(),'status':status,'workers':workers,'inventory':inventory,'temporal_plan':{'status':temporal,'date_range':plan.get('date_range'),'population':plan.get('population'),'gates':plan.get('gates')},'data_quality':q,'drift':d,'production':prod};writej(STATE,state);return state
 def main():
- log('AUTONOMY SUPERVISOR START v1.3')
+ log('AUTONOMY SUPERVISOR START v1.4')
  while True:
   try:run_once()
   except Exception as e:log(f'ERROR {e!r}')
