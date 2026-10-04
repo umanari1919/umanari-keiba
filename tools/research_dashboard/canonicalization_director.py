@@ -4,6 +4,11 @@ import hashlib,json,os,time,traceback
 from datetime import datetime
 from pathlib import Path
 import pandas as pd
+try:
+ from modern_contracts import validate_adapter_contract,validate_core003b_frame
+except Exception:
+ validate_adapter_contract=lambda x:([],'MANUAL_FALLBACK')
+ validate_core003b_frame=lambda x:([],'MANUAL_FALLBACK')
 
 ROOT=Path(os.environ.get('THE_JOCKEY_RESEARCH_ROOT',Path.home()/'Downloads'/'THE-JOCKEY-RESEARCH'))
 CORE=ROOT/'CORE';DATA=CORE/'data';REPORTS=CORE/'reports';CHECK=ROOT/'checkpoints';LOG=ROOT/'logs'/'canonicalization_director.log'
@@ -39,7 +44,7 @@ def contracts():
   except Exception:continue
  return out
 def validate_contract(x,base_cols):
- issues=[]
+ issues=[];typed_issues,contract_engine=validate_adapter_contract(x);issues.extend(typed_issues)
  if not x.get('source_id'):issues.append('missing_source_id')
  if x.get('enabled') is not True:issues.append('not_enabled')
  m=x.get('column_map') or {};defaults=x.get('defaults') or {}
@@ -50,20 +55,20 @@ def validate_contract(x,base_cols):
  if x.get('domain') not in {'JRA','NAR','MIXED'}:issues.append('invalid_domain')
  if not x.get('provenance'):issues.append('missing_provenance')
  if x.get('rights_status') not in {'APPROVED_INTERNAL','APPROVED'}:issues.append('rights_not_approved')
- return issues
+ return issues,contract_engine
 def canonicalize(path,contract,base_cols):
- issues=validate_contract(contract,base_cols)
- if issues:return None,issues
+ issues,contract_engine=validate_contract(contract,base_cols)
+ if issues:return None,issues,contract_engine,'NOT_RUN'
  src=pd.read_csv(path,low_memory=False);mapping=contract['column_map'];missing=[c for c in mapping if c not in src.columns]
- if missing:return None,[f'missing_source_columns:{missing[:20]}']
+ if missing:return None,[f'missing_source_columns:{missing[:20]}'],contract_engine,'NOT_RUN'
  df=src[list(mapping)].rename(columns=mapping).copy()
  for k,v in (contract.get('defaults') or {}).items():
   if k not in df:df[k]=v
  if base_cols:
   missing_base=[c for c in base_cols if c not in df]
-  if missing_base:return None,[f'core003b_columns_missing_after_mapping:{missing_base[:30]}']
+  if missing_base:return None,[f'core003b_columns_missing_after_mapping:{missing_base[:30]}'],contract_engine,'NOT_RUN'
   df=df[base_cols].copy()
- if not REQUIRED.issubset(df.columns):return None,['canonical_required_missing']
+ if not REQUIRED.issubset(df.columns):return None,['canonical_required_missing'],contract_engine,'NOT_RUN'
  df['race_date']=pd.to_datetime(df.race_date,errors='coerce').dt.strftime('%Y-%m-%d')
  if df.race_date.isna().any():issues.append('invalid_race_date')
  scope=pd.to_numeric(df.race_scope_cd,errors='coerce')
@@ -75,7 +80,9 @@ def canonicalize(path,contract,base_cols):
  if not issues:
   a=pd.to_numeric(df.label_win);b=pd.to_numeric(df.label_top2);c=pd.to_numeric(df.label_top3)
   if ((a>b)|(b>c)).any():issues.append('label_monotonicity_violation')
- return (df if not issues else None),issues
+ data_issues,data_engine=validate_core003b_frame(df)
+ issues.extend(data_issues)
+ return (df if not issues else None),issues,contract_engine,data_engine
 def append_ledger(rows):
  if rows:pd.DataFrame(rows).to_csv(LEDGER,mode='a',header=not LEDGER.exists(),index=False,encoding='utf-8-sig')
 def run_once():
@@ -88,15 +95,15 @@ def run_once():
   try:desc=json.loads(side.read_text(encoding='utf-8-sig'));sid=str(desc.get('source_id') or '')
   except Exception as e:rows.append({'updated':now(),'source':str(p),'status':'QUARANTINED','reason':f'BAD_SOURCE_DESCRIPTOR:{e!r}'});continue
   if sid not in cs:rows.append({'updated':now(),'source':str(p),'source_id':sid,'status':'QUARANTINED','reason':'UNREGISTERED_SOURCE'});continue
-  cp,contract=cs[sid];df,issues=canonicalize(p,contract,base_cols)
-  if issues:rows.append({'updated':now(),'source':str(p),'source_id':sid,'status':'QUARANTINED','reason':'|'.join(map(str,issues))});continue
+  cp,contract=cs[sid];df,issues,contract_engine,data_engine=canonicalize(p,contract,base_cols)
+  if issues:rows.append({'updated':now(),'source':str(p),'source_id':sid,'status':'QUARANTINED','reason':'|'.join(map(str,issues)),'contract_engine':contract_engine,'data_contract_engine':data_engine});continue
   source_sig=sha(p);dest=OUT/f'{sid}__{source_sig[:12]}__canonical.csv';meta=dest.with_suffix('.json')
   if not dest.exists():
    tmp=dest.with_suffix('.tmp');df.to_csv(tmp,index=False,encoding='utf-8-sig');tmp.replace(dest)
-   writej(meta,{'status':'CANONICAL_STAGED','created_at':now(),'source_id':sid,'source_file':str(p),'source_sha256':source_sig,'contract_file':str(cp),'contract_sha256':sha(cp),'core003b_schema_columns':len(base_cols),'rows':len(df),'races':int(df.race_id.nunique()),'policy':'versioned staging only; exact CORE-003B column contract; reconciliation decides promotion'})
-  rows.append({'updated':now(),'source':str(p),'source_id':sid,'status':'STAGED','rows':len(df),'races':int(df.race_id.nunique()),'output':str(dest)})
+   writej(meta,{'status':'CANONICAL_STAGED','created_at':now(),'source_id':sid,'source_file':str(p),'source_sha256':source_sig,'contract_file':str(cp),'contract_sha256':sha(cp),'core003b_schema_columns':len(base_cols),'rows':len(df),'races':int(df.race_id.nunique()),'contract_engine':contract_engine,'data_contract_engine':data_engine,'policy':'versioned staging only; exact CORE-003B column contract; reconciliation decides promotion'})
+  rows.append({'updated':now(),'source':str(p),'source_id':sid,'status':'STAGED','rows':len(df),'races':int(df.race_id.nunique()),'output':str(dest),'contract_engine':contract_engine,'data_contract_engine':data_engine})
  append_ledger(rows);blocked=sum(r['status']=='QUARANTINED' for r in rows);staged=sum(r['status']=='STAGED' for r in rows)
- out={'updated':now(),'status':'WARN' if blocked else 'PASS','registered_contracts':len(cs),'core003b_schema_columns':len(base_cols),'staged':staged,'quarantined':blocked,'processed':rows,'policy':'Only registered + rights-approved + exact CORE-003B-compatible sources are staged. No schema guessing.'}
+ out={'updated':now(),'status':'WARN' if blocked else 'PASS','registered_contracts':len(cs),'core003b_schema_columns':len(base_cols),'staged':staged,'quarantined':blocked,'processed':rows,'policy':'Only registered + rights-approved + exact CORE-003B-compatible sources are staged. Pydantic/Pandera strengthen validation when installed; manual gates remain fallback.'}
  writej(SUMMARY,out);state(out['status'],'canonicalization scan complete',out);return out
 def main():
  log('CANONICALIZATION DIRECTOR START')
