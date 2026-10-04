@@ -46,15 +46,27 @@ def _inventory_material(cards):
 
 def _source_material(cards):
     s=readj(REPORTS/'SOURCE_ADAPTER_summary.json',{}) or {}
-    for key in ('sources','databases','connections'):
-        vals=s.get(key)
-        if not isinstance(vals,list):continue
-        for v in vals:
+    sources=s.get('sources') or s.get('databases') or s.get('connections') or []
+    ready=0
+    if isinstance(sources,list):
+        for v in sources:
             if not isinstance(v,dict):continue
             status=str(v.get('status','')).upper(); name=str(v.get('name') or v.get('source') or v.get('engine') or 'source')
+            try:ready+=int(v.get('contract_ready_tables') or 0)
+            except Exception:pass
             if status in {'NEEDS_CONTRACT','UNVERIFIED','READY_FOR_CONTRACT'}:
                 cards.append(_card(f'adapter:{name}',f'{name} Source Adapter契約を完成','DATA','SOURCE_CONTRACT',
                     {'source':'SOURCE_ADAPTER_summary.json','status':status},5,5,4,2,2,'source_adapter_director'))
+    if ready>0:
+        cards.append(_card('staging:ready-sources','契約済みDBをChunked Stagingへ搬送','DATA','SOURCE_STAGING',
+            {'source':'SOURCE_ADAPTER_summary.json','contract_ready_tables':ready},5,5,5,3,2,'source_staging_director'))
+
+def _staging_material(cards):
+    s=readj(REPORTS/'SOURCE_STAGING_summary.json',{}) or {}
+    status=str(s.get('status') or '').upper()
+    if status in {'PARTIAL','HOLD','BLOCKED'}:
+        cards.append(_card('staging:repair','Source Stagingの停止・部分失敗を復旧','DATA','STAGING_RECOVERY',
+            {'source':'SOURCE_STAGING_summary.json','status':status,'errors':(s.get('errors') or [])[:5]},5,5,5,2,1,'source_staging_director'))
 
 def _foundation_material(cards):
     f=readj(REPORTS/'FOUNDATION_SELFTEST_report.json',{}) or {}
@@ -89,8 +101,7 @@ def _experiment_material(cards):
 
 def run_once()->dict[str,Any]:
     cards=[]
-    _foundation_material(cards);_inventory_material(cards);_source_material(cards);_failure_material(cards);_blind_material(cards);_experiment_material(cards)
-    # Deduplicate by stable key; strongest evidence wins.
+    _foundation_material(cards);_inventory_material(cards);_source_material(cards);_staging_material(cards);_failure_material(cards);_blind_material(cards);_experiment_material(cards)
     uniq={}
     for c in cards:
         old=uniq.get(c['key'])
