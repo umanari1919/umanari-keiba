@@ -7,10 +7,17 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
+try:
+    from canonical_store import canonical_source_signature, read_pandas, resolve_canonical_source
+except Exception:
+    canonical_source_signature = None
+    read_pandas = None
+    resolve_canonical_source = None
+
 ROOT = Path(os.environ.get('THE_JOCKEY_RESEARCH_ROOT', Path.home()/'Downloads'/'THE-JOCKEY-RESEARCH'))
 CORE = ROOT/'CORE'; DATA = CORE/'data'; REPORTS = CORE/'reports'; CHECK = ROOT/'checkpoints'
 LOG = ROOT/'logs'/'research_director.log'; STATE = CHECK/'research_director_state.json'; PROGRAM = CORE/'program.json'
-SRC = DATA/'CORE-003B_historical_features.csv'; OUT = DATA/'CORE-004_field_strength_v2.csv'
+LEGACY_SRC = DATA/'CORE-003B_historical_features.csv'; OUT = DATA/'CORE-004_field_strength_v2.csv'
 AUDIT = REPORTS/'CORE-004_field_strength_audit.json'; METRICS = REPORTS/'CORE-004_field_strength_metrics.csv'
 INTERVAL = max(30, int(os.environ.get('THE_JOCKEY_RESEARCH_INTERVAL','60')))
 for p in (DATA,REPORTS,CHECK,LOG.parent): p.mkdir(parents=True,exist_ok=True)
@@ -42,16 +49,30 @@ def auc(y,s):
     y=t.y.astype(int).to_numpy();s=t.s.astype(float).to_numpy();p=int((y==1).sum());n=int((y==0).sum())
     if not p or not n:return np.nan
     r=pd.Series(s).rank(method='average').to_numpy(); return float((r[y==1].sum()-p*(p+1)/2)/(p*n))
+def active_src():
+    if resolve_canonical_source is None:return LEGACY_SRC
+    try:return resolve_canonical_source(LEGACY_SRC)
+    except Exception:return LEGACY_SRC
 def source_sig():
-    if not SRC.exists():return None
-    st=SRC.stat();return f'{st.st_size}:{st.st_mtime_ns}'
+    if canonical_source_signature is not None:
+        try:return canonical_source_signature(LEGACY_SRC)
+        except Exception:pass
+    src=active_src()
+    if not src.exists():return None
+    st=src.stat();return f'{st.st_size}:{st.st_mtime_ns}'
+def load_source(src):
+    if read_pandas is not None:
+        try:return read_pandas(src)
+        except Exception:pass
+    return pd.read_parquet(src) if src.suffix.lower()=='.parquet' else pd.read_csv(src,low_memory=False)
 def run_once():
-    if not SRC.exists(): state('WAITING',f'missing {SRC}'); set_mission('BLOCKED'); return False
+    src=active_src()
+    if not src.exists(): state('WAITING',f'missing canonical source {src}'); set_mission('BLOCKED'); return False
     sig=source_sig(); old=readj(AUDIT,{}) or {}
     if OUT.exists() and old.get('source_signature')==sig and old.get('first_start_field_strength_leaks')==0:
-        state('PASS','Field Strength current',{'rows':old.get('rows'),'races':old.get('races')}); set_mission('COMPLETE'); return True
-    state('RUNNING','Building Field Strength v2'); set_mission('RUNNING'); log('CORE-004 START')
-    df=pd.read_csv(SRC,low_memory=False); df['race_date']=pd.to_datetime(df.race_date,errors='raise')
+        state('PASS','Field Strength current',{'rows':old.get('rows'),'races':old.get('races'),'source':str(src)}); set_mission('COMPLETE'); return True
+    state('RUNNING','Building Field Strength v2',{'source':str(src)}); set_mission('RUNNING'); log(f'CORE-004 START source={src}')
+    df=load_source(src); df['race_date']=pd.to_datetime(df.race_date,errors='raise')
     comps=pd.DataFrame(index=df.index)
     for c in ['prior_win_rate','prior_top2_rate','prior_top3_rate','prior_avg_finish_pct','prior_avg_corner4_pct']:
         if c in df: comps[c]=pd.to_numeric(df[c],errors='coerce').clip(0,1)
@@ -80,7 +101,7 @@ def run_once():
         for target in ['label_win','label_top2','label_top3']:
             if target in df: rows.append({'signal':signal,'target':target,'auc_all_available':auc(df[target],score)})
     pd.DataFrame(rows).to_csv(METRICS,index=False,encoding='utf-8-sig'); df.to_csv(OUT,index=False,encoding='utf-8-sig')
-    audit={'source_signature':sig,'rows':int(len(df)),'races':int(df.race_id.nunique()),'horses':int(df.horse_id.nunique()),'generated_features':13,'first_start_field_strength_leaks':int(leak_count),'first_start_leak_detail':leaks,'coverage':{'horse_pre_ability':float(df.horse_pre_ability_v1.notna().mean()),'field_strength':float(df.field_strength_v2.notna().mean()),'ability_vs_field':float(df.ability_vs_field.notna().mean()),'historical_field_strength':float(df.prior_avg_field_strength.notna().mean())},'note':'CORE-005 model selection is exclusively owned by universal_model_director.py'}
+    audit={'source_signature':sig,'source_path':str(src),'source_format':src.suffix.lower(),'rows':int(len(df)),'races':int(df.race_id.nunique()),'horses':int(df.horse_id.nunique()),'generated_features':13,'first_start_field_strength_leaks':int(leak_count),'first_start_leak_detail':leaks,'coverage':{'horse_pre_ability':float(df.horse_pre_ability_v1.notna().mean()),'field_strength':float(df.field_strength_v2.notna().mean()),'ability_vs_field':float(df.ability_vs_field.notna().mean()),'historical_field_strength':float(df.prior_avg_field_strength.notna().mean())},'note':'CORE-005 model selection is exclusively owned by universal_model_director.py'}
     writej(AUDIT,audit)
     if leak_count: state('BLOCKED',f'leakage={leak_count}',audit); set_mission('BLOCKED'); log(f'CORE-004 BLOCKED leakage={leak_count}'); return False
     state('PASS','Field Strength v2 ready',audit); set_mission('COMPLETE'); log('CORE-004 PASS'); return True
