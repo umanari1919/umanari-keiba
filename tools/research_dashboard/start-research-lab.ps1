@@ -8,6 +8,7 @@ $Workers = @(
     @{File='data_inventory_director.py'; Label='Data Inventory Director'},
     @{File='canonicalization_director.py'; Label='Canonicalization Director'},
     @{File='data_reconciliation_director.py'; Label='Data Reconciliation Director'},
+    @{File='research_factory_director.py'; Label='Research Factory / 研究素材創出'},
     @{File='research_director.py'; Label='Research Director'},
     @{File='temporal_sample_optimizer.py'; Label='Temporal Optimizer'},
     @{File='universal_model_director.py'; Label='Universal Model Director'},
@@ -34,9 +35,10 @@ foreach ($m in $RequiredModules) { if (-not (Test-Path (Join-Path $Root $m))) { 
 if (-not (Test-Path $Dashboard)) { throw "必要ファイルが見つかりません: $Dashboard" }
 Write-Host ''
 Write-Host '============================================================'
-Write-Host ' THE JOCKEY 完全自律研究所 — PORTFOLIO GOVERNANCE MODE'
+Write-Host ' THE JOCKEY 完全自律研究所 — RESEARCH FACTORY MODE'
 Write-Host '============================================================'
 Write-Host "Research Root : $Root"
+Write-Host 'Research Factory : evidence-gated idea generation / READY vs NEEDS_DATA'
 Write-Host 'Research Material: evidence-driven automatic discovery'
 Write-Host 'Mission Portfolio: automatic priority / next mission / worker focus'
 Write-Host 'Source Adapter   : PostgreSQL/MySQL READ-ONLY discovery / NO GUESSING'
@@ -50,7 +52,7 @@ Write-Host 'Dashboard        : http://127.0.0.1:8791'
 Write-Host ''
 foreach ($w in $Workers) {
     $existing = Get-CimInstance Win32_Process | Where-Object { $_.CommandLine -like "*$($w.File)*" -and $_.ProcessId -ne $PID }
-    if (-not $existing) { Start-Process -FilePath 'py' -ArgumentList @($w.Path) -WorkingDirectory $Root -WindowStyle Hidden; Write-Host ("{0,-34}: STARTED" -f $w.Label) }
-    else { Write-Host ("{0,-34}: ALREADY RUNNING" -f $w.Label) }
+    if (-not $existing) { Start-Process -FilePath 'py' -ArgumentList @($w.Path) -WorkingDirectory $Root -WindowStyle Hidden; Write-Host ("{0,-38}: STARTED" -f $w.Label) }
+    else { Write-Host ("{0,-38}: ALREADY RUNNING" -f $w.Label) }
 }
 py $Dashboard
