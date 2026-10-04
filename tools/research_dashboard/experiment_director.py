@@ -74,9 +74,13 @@ def key(c):return f"{c['target']}|{c['feature_set']}|{c['config']}|{c['seed']}"
 def done_keys(current_split):
     if not LEDGER.exists():return set()
     try:
-        d=pd.read_csv(LEDGER,usecols=lambda c:c in ['experiment_key','split_id'])
+        d=pd.read_csv(LEDGER,usecols=lambda c:c in ['experiment_key','split_id','brief_id'])
         if 'split_id' not in d.columns:return set()
         d=d[d.split_id.astype(str)==str(current_split)]
+        binding=active_binding(current_split);bid=str(binding.get('brief_id') or '')
+        if bid:
+            if 'brief_id' not in d.columns:return set()
+            d=d[d.brief_id.fillna('').astype(str)==bid]
         return set(d.experiment_key.astype(str))
     except Exception:return set()
 def append(row):pd.DataFrame([row]).to_csv(LEDGER,mode='a',header=not LEDGER.exists(),index=False,encoding='utf-8-sig')
@@ -137,7 +141,7 @@ def main():
             except Exception as e:state('BLOCKED',f'catboost unavailable: {e}');time.sleep(60);continue
             space=candidate_space(eng.split_id);done=done_keys(eng.split_id);cand=next((c for c in space if key(c) not in done),None)
             if cand is None:
-                state('WAITING','All known hypotheses exhausted; waiting for generator',{'split_id':eng.split_id,'completed':len(done),'total':len(space),'remaining':0});time.sleep(15);continue
+                binding=active_binding(eng.split_id);state('WAITING','All known hypotheses exhausted for active brief; waiting for generator',{'split_id':eng.split_id,'brief_id':binding.get('brief_id'),'completed':len(done),'total':len(space),'remaining':0});time.sleep(15);continue
             adaptive=sum(1 for c in space if c.get('source')=='HYPOTHESIS_GEN')
             binding=active_binding(eng.split_id);state('RUNNING',key(cand),{'split_id':eng.split_id,'completed':len(done),'total':len(space),'remaining':max(0,len(space)-len(done)),'adaptive_candidates':adaptive,'date_range':eng.plan.get('date_range'),'brief_id':binding.get('brief_id')})
             started=time.time();row=eng.run(cand);elapsed=round(time.time()-started,1);done.add(key(cand));log(f"TURBO {row['status']} {row['experiment_key']} split={eng.split_id} brief={row.get('brief_id')} src={row.get('source','BASE')} sec={elapsed} selection={row.get('selection_logloss','-')}")
