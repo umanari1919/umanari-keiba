@@ -30,6 +30,6 @@ jobs:
       - name: Compile research lab
         run: uv run python -m compileall -q tools/research_dashboard
       - name: Ruff runtime-safety gate
-        run: uv run ruff check --select E9,F63,F7,F82 tools/research_dashboard tests/test_modern_stack.py
-      - name: Modern stack tests
-        run: uv run pytest -q tests/test_modern_stack.py
+        run: uv run ruff check --select E9,F63,F7,F82 tools/research_dashboard tests/test_modern_stack.py tests/test_portfolio_governance.py
+      - name: Research lab tests
+        run: uv run pytest -q tests/test_modern_stack.py tests/test_portfolio_governance.py
