@@ -3,7 +3,6 @@ from __future__ import annotations
 import hashlib,json,os,time,traceback
 from datetime import datetime
 from pathlib import Path
-from typing import Any
 
 ROOT=Path(os.environ.get('THE_JOCKEY_RESEARCH_ROOT',Path.home()/'Downloads'/'THE-JOCKEY-RESEARCH'))
 CORE=ROOT/'CORE';DATA=CORE/'data';REPORTS=CORE/'reports';CHECK=ROOT/'checkpoints';STAGING=CORE/'source_staging';CONTRACTS=CORE/'contracts'/'source_adapters';OUT=ROOT/'canonicalization'/'outbox';QUAR=ROOT/'canonicalization'/'quarantine'
