@@ -17,7 +17,7 @@ def validate_adapter_contract(obj: dict[str, Any]) -> tuple[list[str], str]:
             provenance: str = Field(min_length=1)
             rights_status: Literal["APPROVED_INTERNAL", "APPROVED"]
             column_map: dict[str, str]
-            defaults: dict[str, Any] = {}
+            defaults: dict[str, Any] = Field(default_factory=dict)
 
         try:
             AdapterContract.model_validate(obj)
@@ -33,19 +33,19 @@ def validate_adapter_contract(obj: dict[str, Any]) -> tuple[list[str], str]:
 
 
 def validate_core003b_frame(df) -> tuple[list[str], str]:
-    """Optional Pandera validation for canonical invariants."""
+    """Optional Pandera validation for canonical invariants without over-constraining pandas dtypes."""
     try:
         import pandera.pandas as pa
         from pandera import Check
         schema=pa.DataFrameSchema({
-            "race_id": pa.Column(object, nullable=False),
-            "race_horse_id": pa.Column(object, nullable=False, unique=True),
-            "horse_id": pa.Column(object, nullable=False),
-            "race_date": pa.Column(object, nullable=False),
-            "race_scope_cd": pa.Column(object, checks=Check(lambda s: s.astype(str).isin(["1","1.0","2","2.0"]).all())),
-            "label_win": pa.Column(object, checks=Check(lambda s: s.astype(float).isin([0.0,1.0]).all())),
-            "label_top2": pa.Column(object, checks=Check(lambda s: s.astype(float).isin([0.0,1.0]).all())),
-            "label_top3": pa.Column(object, checks=Check(lambda s: s.astype(float).isin([0.0,1.0]).all())),
+            "race_id": pa.Column(nullable=False),
+            "race_horse_id": pa.Column(nullable=False, unique=True),
+            "horse_id": pa.Column(nullable=False),
+            "race_date": pa.Column(nullable=False),
+            "race_scope_cd": pa.Column(checks=Check(lambda s: s.astype(str).isin(["1","1.0","2","2.0"]).all())),
+            "label_win": pa.Column(checks=Check(lambda s: s.astype(float).isin([0.0,1.0]).all())),
+            "label_top2": pa.Column(checks=Check(lambda s: s.astype(float).isin([0.0,1.0]).all())),
+            "label_top3": pa.Column(checks=Check(lambda s: s.astype(float).isin([0.0,1.0]).all())),
         }, strict=False, coerce=False)
         schema.validate(df, lazy=True)
         return [], "PANDERA"
