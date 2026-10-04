@@ -2,7 +2,7 @@ $ErrorActionPreference = 'Stop'
 $Root = if ($env:THE_JOCKEY_RESEARCH_ROOT) { $env:THE_JOCKEY_RESEARCH_ROOT } else { Join-Path $HOME 'Downloads\THE-JOCKEY-RESEARCH' }
 New-Item -ItemType Directory -Force -Path $Root | Out-Null
 $Base = 'https://raw.githubusercontent.com/umanari1919/umanari-keiba/main/tools/research_dashboard'
-$Names = @('dashboard_server.py','start-dashboard.ps1','research_director.py','temporal_sample_optimizer.py','universal_model_director.py','probability_director.py','meta_research_director.py','feature_research_director.py','experiment_director.py','hypothesis_generator.py','domain_research_director.py','ensemble_director.py','autonomy_supervisor.py','start-research-lab.ps1','lab_updater.py')
+$Names = @('dashboard_server.py','start-dashboard.ps1','research_director.py','data_inventory_director.py','data_reconciliation_director.py','temporal_sample_optimizer.py','universal_model_director.py','probability_director.py','meta_research_director.py','feature_research_director.py','experiment_director.py','hypothesis_generator.py','domain_research_director.py','ensemble_director.py','autonomy_supervisor.py','start-research-lab.ps1','lab_updater.py')
 foreach ($Name in $Names) {
     $Out = Join-Path $Root $Name
     $Uri = "${Base}/${Name}?nocache=$([guid]::NewGuid())"
@@ -14,6 +14,7 @@ Write-Host 'THE JOCKEY Complete Autonomous Research Lab installed.'
 Write-Host 'Self Update           : ENABLED'
 Write-Host 'Auto Recovery         : ENABLED'
 Write-Host 'Population Audit      : ENABLED'
+Write-Host 'Data Reconciliation   : ENABLED (gated)'
 Write-Host 'Temporal Optimization : ENABLED'
 Write-Host 'Walk Forward Plan     : ENABLED'
 Write-Host 'Continuous Experiments: TURBO'
