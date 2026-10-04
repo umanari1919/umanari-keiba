@@ -1,0 +1,35 @@
+name: modern-stack-quality
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  quality:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+        python-version: ["3.13", "3.14"]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v7
+      - name: Install uv
+        uses: astral-sh/setup-uv@v10.2.0
+        with:
+          version: latest-known
+          enable-cache: auto
+      - name: Install Python
+        run: uv python install ${{ matrix.python-version }}
+      - name: Resolve modern stack
+        run: uv sync --python ${{ matrix.python-version }} --extra core --extra research --extra dev
+      - name: Compile research lab
+        run: uv run python -m compileall -q tools/research_dashboard
+      - name: Ruff critical modern-stack files
+        run: uv run ruff check tools/research_dashboard/dependency_guard.py tools/research_dashboard/modern_data_engine.py tools/research_dashboard/data_inventory_director.py tools/research_dashboard/foundation_selftest_director.py
+      - name: Modern stack tests
+        run: uv run pytest -q tests/test_modern_stack.py
