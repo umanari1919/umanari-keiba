@@ -9,6 +9,7 @@ $Workers = @(
     @{File='canonicalization_director.py'; Label='Canonicalization Director'},
     @{File='data_reconciliation_director.py'; Label='Data Reconciliation Director'},
     @{File='research_factory_director.py'; Label='Research Factory / 研究素材創出'},
+    @{File='research_brief_director.py'; Label='Research Brief / 研究計画固定'},
     @{File='research_director.py'; Label='Research Director'},
     @{File='temporal_sample_optimizer.py'; Label='Temporal Optimizer'},
     @{File='universal_model_director.py'; Label='Universal Model Director'},
@@ -35,10 +36,11 @@ foreach ($m in $RequiredModules) { if (-not (Test-Path (Join-Path $Root $m))) { 
 if (-not (Test-Path $Dashboard)) { throw "必要ファイルが見つかりません: $Dashboard" }
 Write-Host ''
 Write-Host '============================================================'
-Write-Host ' THE JOCKEY 完全自律研究所 — RESEARCH FACTORY MODE'
+Write-Host ' THE JOCKEY 完全自律研究所 — RESEARCH BRIEF MODE'
 Write-Host '============================================================'
 Write-Host "Research Root : $Root"
 Write-Host 'Research Factory : evidence-gated idea generation / READY vs NEEDS_DATA'
+Write-Host 'Research Brief   : freeze objective / population / metrics / stop / Blind gate before execution'
 Write-Host 'Research Material: evidence-driven automatic discovery'
 Write-Host 'Mission Portfolio: automatic priority / next mission / worker focus'
 Write-Host 'Source Adapter   : PostgreSQL/MySQL READ-ONLY discovery / NO GUESSING'
