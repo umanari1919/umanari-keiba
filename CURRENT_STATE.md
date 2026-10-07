@@ -1136,6 +1136,55 @@ Next gate:
 - rank which features genuinely gained/lost discrimination on a comparable scale;
 - include winner/nonwinner sample sizes and yearly stability before proposing any BaoZ weighting hypothesis.
 
+## BAOZ-PROBE-021 local evidence — 2026-10-08
+
+Standardized discrimination analysis completed for `馬券評価順位=1 x popularity 7-9 x dirt`.
+
+Population:
+- 2019-2023: n=3,483 / winners=158
+- 2024-2026: n=2,098 / winners=62
+
+### Recent standardized winner/nonwinner separation
+
+Strongest recent absolute effects include:
+
+- 予想タイム指数: d +0.28
+- 先行指数: d +0.25
+- タイム指数上昇係数: d -0.25
+- 血統トラック評価: d +0.22
+- 血統総合評価: d +0.20
+- 得点 / 得点V3: d about +0.14
+- 枠順評価: d +0.13
+- タイム指数回帰推定値: d +0.13
+
+### Discrimination that weakened
+
+- 得点V2: +0.23 -> +0.11
+- 得点V1: +0.17 -> +0.08
+- デフォルト得点: +0.10 -> -0.06
+
+### Sign changes / unstable signals
+
+- タイム指数上昇係数: +0.16 -> -0.25
+- 調教師評価: +0.04 -> -0.11
+- 血統成長力評価B: +0.04 -> -0.11
+- 枠順評価: -0.05 -> +0.13
+- 血統距離評価: -0.02 -> +0.11
+
+Yearly winner counts are small (roughly 19-39), so single-year effect estimates are noisy. In particular, 予想タイム指数 is very strong in 2024, nearly neutral in 2025, and positive again in 2026.
+
+### Interpretation
+
+The recent decline is not a blanket loss of all BaoZ feature discrimination. Several individual signals remain useful or stronger, while some composite score variants and other inputs weaken or reverse.
+
+However, this is still not sufficient to call the problem BaoZ-specific model degradation.
+
+Critical missing control:
+- compare BaoZ-selected P7-9 dirt candidates against the base win/top3 rate of **all** P7-9 dirt runners in the same periods and odds bands.
+
+If the whole market segment became harder, raw selected-candidate win-rate decline overstates model deterioration.
+If BaoZ's lift over that market baseline fell materially, the model-specific degradation case becomes much stronger.
+
 ## Current model/research state
 
 - NEO JIZO baseline: `jockey-25`
