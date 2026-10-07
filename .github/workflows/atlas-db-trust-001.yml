@@ -1,0 +1,39 @@
+name: atlas-db-trust-001
+
+on:
+  pull_request:
+    paths:
+      - "tools/atlas_db_trust_001.py"
+      - "tools/research_dashboard/schema_contract_director.py"
+      - "tests/test_atlas_db_trust_001.py"
+      - "docs/ATLAS_DB_TRUST_001.md"
+      - ".github/workflows/atlas-db-trust-001.yml"
+  push:
+    branches: [main]
+    paths:
+      - "tools/atlas_db_trust_001.py"
+      - "tools/research_dashboard/schema_contract_director.py"
+      - "tests/test_atlas_db_trust_001.py"
+
+permissions:
+  contents: read
+
+jobs:
+  offline-db-trust:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+        python-version: ["3.13", "3.14"]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v6
+        with:
+          python-version: ${{ matrix.python-version }}
+      - name: Compile source
+        run: python -m py_compile tools/atlas_db_trust_001.py tools/research_dashboard/schema_contract_director.py tests/test_atlas_db_trust_001.py
+      - name: Synthetic catalog checks and false-PASS regression
+        run: python -m unittest discover -s tests -p 'test_atlas_db_trust_001.py' -v
+      - name: Verify no DB is contacted by default
+        run: python tools/atlas_db_trust_001.py
