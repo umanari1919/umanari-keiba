@@ -1,0 +1,31 @@
+name: neo-jizo-atlas-ui-001
+
+on:
+  pull_request:
+    paths:
+      - "tools/research_dashboard/dashboard_server.py"
+      - "src/publish_weekend_ui.py"
+      - "web/index.html"
+      - "tests/test_atlas_branding.py"
+      - ".github/workflows/neo-jizo-atlas-ui-001.yml"
+  push:
+    branches: [main]
+    paths:
+      - "tools/research_dashboard/dashboard_server.py"
+      - "src/publish_weekend_ui.py"
+      - "web/index.html"
+      - "tests/test_atlas_branding.py"
+      - ".github/workflows/neo-jizo-atlas-ui-001.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  brand-boundary:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Compile changed Python
+        run: python3 -m py_compile tools/research_dashboard/dashboard_server.py src/publish_weekend_ui.py tests/test_atlas_branding.py
+      - name: Validate ATLAS / FORWARD UI branding
+        run: python3 -m unittest discover -s tests -p 'test_atlas_branding.py' -v
