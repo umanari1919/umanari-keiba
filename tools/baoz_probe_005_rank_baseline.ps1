@@ -126,12 +126,14 @@ $conn=$opened.Connection
 
 try {
     $cutoffLiteral=$CutoffDate.ToString('yyyy-MM-dd')
-    $base="([年月日] >= #1986-01-01# AND [年月日] <= #$cutoffLiteral# AND [確定着順] Between 1 And 99 AND [馬番] > 0)"
+    $base="([年月日] >= #1986-01-01# AND [年月日] <= #$cutoffLiteral# AND [確定着順] Between 1 And 28 AND [馬番] > 0)"
 
     $population=[ordered]@{
         cutoff_date=$cutoffLiteral
         valid_runner_rows=[int64](Invoke-Scalar $conn "SELECT Count(*) FROM [出走馬T] WHERE $base")
         valid_races=[int64](Invoke-Scalar $conn "SELECT Count(*) FROM (SELECT [競走コード] FROM [出走馬T] WHERE $base GROUP BY [競走コード]) AS Q")
+        valid_min_date=(Invoke-Scalar $conn "SELECT Min([年月日]) FROM [出走馬T] WHERE $base")
+        valid_max_date=(Invoke-Scalar $conn "SELECT Max([年月日]) FROM [出走馬T] WHERE $base")
         zero_finish_rows=[int64](Invoke-Scalar $conn "SELECT Count(*) FROM [出走馬T] WHERE [年月日] >= #1986-01-01# AND [年月日] <= #$cutoffLiteral# AND [確定着順]=0")
         sentinel_date_rows=[int64](Invoke-Scalar $conn "SELECT Count(*) FROM [出走馬T] WHERE [年月日] < #1986-01-01#")
         future_rows=[int64](Invoke-Scalar $conn "SELECT Count(*) FROM [出走馬T] WHERE [年月日] > #$cutoffLiteral#")
@@ -176,7 +178,7 @@ try {
         assumptions=[ordered]@{
             valid_date_start='1986-01-01'
             cutoff_date=$cutoffLiteral
-            valid_finish='1..99'
+            valid_finish='1..28'
             return_index_denominator_yen_per_bet=100
             note='Return index is provisional until BaoZ payout-unit semantics are explicitly confirmed.'
         }
@@ -200,6 +202,7 @@ try {
     Write-Host ("Cutoff date         : {0}" -f $population.cutoff_date)
     Write-Host ("Valid runner rows   : {0}" -f $population.valid_runner_rows)
     Write-Host ("Valid races         : {0}" -f $population.valid_races)
+    Write-Host ("Valid date range    : {0} .. {1}" -f $population.valid_min_date,$population.valid_max_date)
     Write-Host ("Zero-finish rows    : {0}" -f $population.zero_finish_rows)
     Write-Host ("Sentinel-date rows  : {0}" -f $population.sentinel_date_rows)
     Write-Host ("Future rows         : {0}" -f $population.future_rows)
