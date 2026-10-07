@@ -344,7 +344,7 @@ def test_label_issue_subtypes_coverage_by_split_and_scope(tmp_path: Path) -> Non
         "NONMONOTONIC_TARGET_LABELS": 1,
         "NON_NUMERIC_LABEL": 1,
     }
-    assert result["split_label_coverage"]["OOS"]["labeled_coverage"] == pytest.approx(.25)
+    assert result["split_label_coverage"]["OOS"]["usable_row_coverage"] == pytest.approx(.25)
     assert result["split_label_coverage"]["TEST"]["labeled_coverage"] == pytest.approx(0)
     assert result["invalid_affected_races_by_split"] == {"OOS": 3, "TEST": 2}
     assert result["status"] == "PARTIAL_INVALID_ROWS"
