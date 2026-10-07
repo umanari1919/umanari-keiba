@@ -191,7 +191,7 @@ ORDER BY R.[主催者コード], R.[場コード], Count(*) DESC
 
     $dims=[ordered]@{
         organizer='CStr(R.[主催者コード])'
-        venue='CStr(R.[場コード]) & ":" & Nz(R.[場名],"")'
+        venue='CStr(R.[場コード]) & ":" & IIf(IsNull(R.[場名]),"",R.[場名])'
         track_type='CStr(R.[トラック種別コード])'
         field_size='IIf(R.[頭数]<=9,"<=9",IIf(R.[頭数]<=12,"10-12",IIf(R.[頭数]<=15,"13-15","16+")))'
     }
