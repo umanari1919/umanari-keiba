@@ -22,7 +22,7 @@ from typing import Any
 
 DEFAULT_DB = "mykeibadb"
 DEFAULT_PORT = "5433"
-DEFAULT_HOST = "localhost"
+DEFAULT_HOST = "127.0.0.1"
 
 KEY_PATTERNS = (
     "race_code",
