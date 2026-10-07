@@ -27,7 +27,9 @@ function Invoke-GitText {
         [switch]$AllowFailure
     )
 
-    $output = & git -C $Path @Arguments 2>&1
+    # Use a command-scoped safe.directory exception so repositories created by
+    # Codex/Agent sandbox accounts can be audited without modifying global Git config.
+    $output = & git -c "safe.directory=$Path" -C $Path @Arguments 2>&1
     $code = $LASTEXITCODE
     $text = (($output | ForEach-Object { "$_" }) -join "`n").TrimEnd()
 
@@ -383,6 +385,10 @@ function Invoke-SelfTest {
 
         $same = Join-Path $root 'same'
         & git clone -q $canonical $same
+        $safeProbe = Invoke-GitText -Path $same -Arguments @('rev-parse', 'HEAD')
+        if ($safeProbe.Code -ne 0 -or -not $safeProbe.Text.Trim()) {
+            throw 'Command-scoped safe.directory probe failed.'
+        }
         $resolvedSame = Resolve-NeoJizoRepo -RequestedPath $same
         if ((Resolve-Path -LiteralPath $resolvedSame).Path -ne (Resolve-Path -LiteralPath $same).Path) {
             throw 'Explicit repository resolution failed.'
