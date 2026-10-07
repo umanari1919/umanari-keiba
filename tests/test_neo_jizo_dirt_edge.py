@@ -99,6 +99,9 @@ def test_dirt_p7_9_contract_reports_three_targets_calibration_and_lift() -> None
     assert result["lift"]["top3"] == pytest.approx(5 / 3)
 
     assert result["selected"]["avg_p_win"] == pytest.approx(0.175)
+    assert result["selected"]["win_rate_ci95"] is not None
+    assert result["selected"]["top2_rate_ci95"] is not None
+    assert result["selected"]["top3_rate_ci95"] is not None
     assert result["selected"]["brier_win"] is not None
     assert result["selected"]["brier_top2"] is not None
     assert result["selected"]["brier_top3"] is not None
@@ -144,3 +147,6 @@ def test_selection_odds_ratio_uses_nonselected_comparator() -> None:
     result = evaluate_rows(rows, popularity_min=7, popularity_max=9, surface="dirt")
     # (2/2) / (1/5) = 5.0
     assert result["selection_win_odds_ratio"] == pytest.approx(5.0)
+    assert result["selection_win_odds_ratio_ci95"] is not None
+    low, high = result["selection_win_odds_ratio_ci95"]
+    assert low < 5.0 < high
