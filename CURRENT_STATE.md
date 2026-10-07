@@ -796,6 +796,73 @@ Next gate:
 - inspect prediction/calculation/provenance-related schema fields and prediction-computed flags;
 - determine whether BaoZ stores a calculation timestamp, settings/version identifier, or other evidence that distinguishes contemporaneous predictions from later recomputation.
 
+## BAOZ-PROBE-015 local evidence — 2026-10-08
+
+Prediction-provenance metadata probe completed.
+
+### Candidate current-snapshot/statistics tables
+
+BaoZ.mdb contains:
+
+- 最新コース成績T
+- 最新騎手成績T
+- 最新血統成績T
+- 最新調教師成績T
+- 最新票数T
+- 条件別着順タイム指数
+- 着順指数Ｔ
+- 設定T
+- 予想設定T
+
+The presence of multiple `最新...` tables creates a material temporal-leakage question if historical prediction fields can be recomputed using current snapshots.
+
+### Race provenance-related columns
+
+`レースT` includes:
+
+- データ作成年月日
+- 月日
+- 発走時刻
+- 予想計算済み
+- 予想勝ち指数
+- 予想決着指数
+- タイム指数誤差
+- オッズ取得時刻
+- 投票直前オッズ時刻
+- 予想計算状況フラグ
+- 馬体重取得時刻
+- レコード作成fromtime
+
+### Prediction-computed flag is not a reliable provenance indicator
+
+- 2012-2018: 115,313 races, calcNonZero 35,862
+- 2019-2023: 83,774 races, calcNonZero 0
+- 2024-2026: 47,259 races, calcNonZero 0
+- future: 55 races, calcNonZero 0
+
+Yet `予想勝ち指数` and `波乱度` are non-null essentially throughout all periods, including future races.
+
+Therefore `予想計算済み` cannot be interpreted as a current-version “prediction exists” flag. It likely changed semantics, became deprecated, or is no longer maintained.
+
+### Settings metadata
+
+- `予想設定T` exists but has 0 rows in the current DB.
+- No useful model/version provenance was found there.
+
+### Temporal-integrity status remains PARTIAL PASS
+
+Proven:
+- rank/score can exist pre-result.
+
+Not proven:
+- historical rank values were frozen contemporaneously;
+- historical rank values were not recomputed using current `最新...` snapshot tables.
+
+Next gate:
+- inspect schema, row counts, date/version fields, and time coverage of the `最新...` tables;
+- determine whether they are pure current snapshots or retain historical/as-of structure;
+- inspect `設定T` metadata names for model/version/calculation provenance without outputting setting values.
+
 ## Current model/research state
 
 - NEO JIZO baseline: `jockey-25`
