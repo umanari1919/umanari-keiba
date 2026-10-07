@@ -863,6 +863,48 @@ Next gate:
 - determine whether they are pure current snapshots or retain historical/as-of structure;
 - inspect `設定T` metadata names for model/version/calculation provenance without outputting setting values.
 
+## BAOZ-PROBE-016 local evidence — 2026-10-08
+
+Snapshot/as-of audit completed.
+
+### Current-snapshot tables are single-date snapshots
+
+All four core `最新...` statistics tables have a single creation date of 2026-10-01:
+
+- 最新コース成績T: 258 rows, 作成年月日 min=max=2026-10-01
+- 最新騎手成績T: 1,471 rows, 作成年月日 min=max=2026-10-01
+- 最新血統成績T: 2,043 rows, 作成年月日 min=max=2026-10-01
+- 最新調教師成績T: 1,886 rows, 作成年月日 min=max=2026-10-01
+
+These tables do not retain historical/as-of snapshots.
+
+### Other supporting tables
+
+- 最新票数T: 299 rows, no date/version field
+- 条件別着順タイム指数: 2,008 rows, no date/version field
+- 着順指数Ｔ: 81 rows, no date/version field
+- 設定T: 41 rows, fields セクション / キー / データ, no date/version field
+
+### Temporal-integrity implication
+
+This is a material leakage warning, not yet proof of leakage.
+
+Two possible architectures remain:
+
+1. SAFE possibility:
+   - current `最新...` tables are used only when computing new/current predictions;
+   - historical prediction feature values were materialized into each historical runner/race row at computation time and remain frozen there.
+
+2. UNSAFE possibility:
+   - historical predictions are recomputed or refreshed using the current 2026-10-01 snapshot tables;
+   - this would contaminate retrospective historical evaluation with future information.
+
+Next gate:
+
+- inspect materialized historical feature columns in `出走馬T`;
+- determine whether jockey/trainer/bloodline/course evaluation values are stored per race and vary historically for the same entity;
+- do not label the retrospective evaluation leakage-safe until this is resolved.
+
 ## Current model/research state
 
 - NEO JIZO baseline: `jockey-25`
