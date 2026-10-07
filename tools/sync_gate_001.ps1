@@ -1,0 +1,360 @@
+#Requires -Version 7.2
+[CmdletBinding()]
+param(
+    [string]$RepoPath = '',
+    [string]$CanonicalRepo = 'https://github.com/umanari1919/umanari-keiba.git',
+    [string]$CanonicalBranch = 'main',
+    [string]$OutputDir = '',
+    [switch]$SelfTest
+)
+
+Set-StrictMode -Version Latest
+$ErrorActionPreference = 'Stop'
+
+function Redact-SensitiveText {
+    param([AllowNull()][string]$Text)
+    if ($null -eq $Text) { return '' }
+    $value = $Text
+    $value = $value -replace 'https://[^/\s]+@github\.com', 'https://***@github.com'
+    $value = $value -replace '(ghp_|github_pat_)[A-Za-z0-9_]+', '$1***'
+    return $value
+}
+
+function Invoke-GitText {
+    param(
+        [Parameter(Mandatory)][string]$Path,
+        [Parameter(Mandatory)][string[]]$Arguments,
+        [switch]$AllowFailure
+    )
+
+    $output = & git -C $Path @Arguments 2>&1
+    $code = $LASTEXITCODE
+    $text = (($output | ForEach-Object { "$_" }) -join "`n").TrimEnd()
+
+    if ($code -ne 0 -and -not $AllowFailure) {
+        throw "git $($Arguments -join ' ') failed with exit code $code.`n$(Redact-SensitiveText $text)"
+    }
+
+    [pscustomobject]@{
+        Code = $code
+        Text = (Redact-SensitiveText $text)
+    }
+}
+
+function Resolve-NeoJizoRepo {
+    param([string]$RequestedPath)
+
+    $candidates = [System.Collections.Generic.List[string]]::new()
+
+    if ($RequestedPath) { $candidates.Add($RequestedPath) }
+    if ($env:NEO_JIZO_KEIBA_ROOT) { $candidates.Add($env:NEO_JIZO_KEIBA_ROOT) }
+
+    $candidates.Add((Join-Path $HOME 'Documents/Codex/2026-10-06/new-chat/neo-jizo-keiba'))
+    if ($env:USERPROFILE) {
+        $candidates.Add((Join-Path $env:USERPROFILE 'Documents/Codex/2026-10-06/new-chat/neo-jizo-keiba'))
+    }
+
+    foreach ($candidate in ($candidates | Select-Object -Unique)) {
+        if (-not $candidate) { continue }
+        if (-not (Test-Path -LiteralPath $candidate -PathType Container)) { continue }
+
+        $inside = Invoke-GitText -Path $candidate -Arguments @('rev-parse', '--is-inside-work-tree') -AllowFailure
+        if ($inside.Code -eq 0 -and $inside.Text.Trim() -eq 'true') {
+            return (Resolve-Path -LiteralPath $candidate).Path
+        }
+    }
+
+    throw @"
+neo-jizo-keiba Git repository was not found.
+Specify it explicitly:
+  ./tools/sync_gate_001.ps1 -RepoPath 'C:\path\to\neo-jizo-keiba'
+or set NEO_JIZO_KEIBA_ROOT.
+"@
+}
+
+function Get-GitRelation {
+    param(
+        [Parameter(Mandatory)][string]$Path,
+        [Parameter(Mandatory)][string]$Remote,
+        [Parameter(Mandatory)][string]$Branch
+    )
+
+    $head = (Invoke-GitText -Path $Path -Arguments @('rev-parse', 'HEAD')).Text.Trim()
+
+    # Metadata/object fetch only. No checkout, reset, clean, merge, rebase, or working-tree write.
+    Invoke-GitText -Path $Path -Arguments @('fetch', '--no-tags', '--quiet', $Remote, $Branch) | Out-Null
+    $canonical = (Invoke-GitText -Path $Path -Arguments @('rev-parse', 'FETCH_HEAD')).Text.Trim()
+
+    $relation = 'unrelated'
+    if ($head -eq $canonical) {
+        $relation = 'same'
+    }
+    else {
+        $canonicalIsAncestor = Invoke-GitText -Path $Path -Arguments @('merge-base', '--is-ancestor', $canonical, $head) -AllowFailure
+        $headIsAncestor = Invoke-GitText -Path $Path -Arguments @('merge-base', '--is-ancestor', $head, $canonical) -AllowFailure
+
+        if ($canonicalIsAncestor.Code -eq 0) {
+            $relation = 'ahead'
+        }
+        elseif ($headIsAncestor.Code -eq 0) {
+            $relation = 'behind'
+        }
+        else {
+            $mergeBase = Invoke-GitText -Path $Path -Arguments @('merge-base', $head, $canonical) -AllowFailure
+            if ($mergeBase.Code -eq 0 -and $mergeBase.Text.Trim()) {
+                $relation = 'diverged'
+            }
+        }
+    }
+
+    $counts = Invoke-GitText -Path $Path -Arguments @('rev-list', '--left-right', '--count', "$head...$canonical") -AllowFailure
+    $aheadBy = $null
+    $behindBy = $null
+    if ($counts.Code -eq 0 -and $counts.Text -match '^\s*(\d+)\s+(\d+)\s*$') {
+        $aheadBy = [int]$Matches[1]
+        $behindBy = [int]$Matches[2]
+    }
+
+    [pscustomobject]@{
+        LocalHead = $head
+        CanonicalHead = $canonical
+        Relation = $relation
+        AheadBy = $aheadBy
+        BehindBy = $behindBy
+    }
+}
+
+function Get-KeywordEvidence {
+    param([Parameter(Mandatory)][string]$Path)
+
+    $grep = Invoke-GitText -Path $Path -Arguments @(
+        'grep', '-n', '-I',
+        '-e', 'jockey-25',
+        '-e', '3目標',
+        '-e', '調教48',
+        '--', '.'
+    ) -AllowFailure
+
+    $collect = @()
+    try {
+        $collect = Get-ChildItem -LiteralPath $Path -Filter 'collect_training.py' -File -Recurse -Depth 8 -ErrorAction SilentlyContinue |
+            Where-Object {
+                $_.FullName -notmatch '[\\/](\.git|\.venv|venv|node_modules|data|artifacts|backups)[\\/]'
+            } |
+            ForEach-Object { $_.FullName.Substring($Path.Length).TrimStart('\', '/') }
+    }
+    catch {
+        $collect = @("SCAN_ERROR: $($_.Exception.Message)")
+    }
+
+    [pscustomobject]@{
+        KeywordMatches = if ($grep.Code -eq 0) { @($grep.Text -split "`n" | Where-Object { $_ }) } else { @() }
+        CollectTrainingFiles = @($collect)
+    }
+}
+
+function Write-SyncReport {
+    param(
+        [Parameter(Mandatory)][string]$Path,
+        [Parameter(Mandatory)][string]$Remote,
+        [Parameter(Mandatory)][string]$Branch,
+        [Parameter(Mandatory)][string]$Destination
+    )
+
+    $relation = Get-GitRelation -Path $Path -Remote $Remote -Branch $Branch
+    $currentBranch = (Invoke-GitText -Path $Path -Arguments @('branch', '--show-current')).Text.Trim()
+    if (-not $currentBranch) { $currentBranch = '(detached HEAD)' }
+
+    $status = (Invoke-GitText -Path $Path -Arguments @('status', '--porcelain=v1', '--untracked-files=all')).Text
+    $remotes = (Invoke-GitText -Path $Path -Arguments @('remote', '-v')).Text
+    $origin = (Invoke-GitText -Path $Path -Arguments @('remote', 'get-url', 'origin') -AllowFailure).Text
+
+    $statusLines = @($status -split "`n" | Where-Object { $_ })
+    $untracked = @($statusLines | Where-Object { $_ -like '?? *' } | ForEach-Object { $_.Substring(3) })
+    $trackedChanges = @($statusLines | Where-Object { $_ -notlike '?? *' })
+
+    $evidence = Get-KeywordEvidence -Path $Path
+
+    $localOnlyLog = (Invoke-GitText -Path $Path -Arguments @(
+        'log', '--oneline', '--decorate', '--max-count=30',
+        "$($relation.CanonicalHead)..$($relation.LocalHead)"
+    ) -AllowFailure).Text
+
+    $canonicalOnlyLog = (Invoke-GitText -Path $Path -Arguments @(
+        'log', '--oneline', '--decorate', '--max-count=30',
+        "$($relation.LocalHead)..$($relation.CanonicalHead)"
+    ) -AllowFailure).Text
+
+    $timestamp = Get-Date -Format 'yyyyMMdd-HHmmss'
+    if (-not $Destination) {
+        $Destination = Join-Path ([IO.Path]::GetTempPath()) 'neo-jizo-sync-gate'
+    }
+    New-Item -ItemType Directory -Force -Path $Destination | Out-Null
+
+    $jsonPath = Join-Path $Destination "SYNC-GATE-001-$timestamp.json"
+    $mdPath = Join-Path $Destination "SYNC-GATE-001-$timestamp.md"
+
+    $payload = [ordered]@{
+        mission = 'SYNC-GATE-001'
+        generated_at = (Get-Date).ToString('o')
+        repo_path = $Path
+        branch = $currentBranch
+        local_head = $relation.LocalHead
+        canonical_repo = $Remote
+        canonical_branch = $Branch
+        canonical_head = $relation.CanonicalHead
+        relation = $relation.Relation
+        ahead_by = $relation.AheadBy
+        behind_by = $relation.BehindBy
+        origin = (Redact-SensitiveText $origin)
+        remotes = @((Redact-SensitiveText $remotes) -split "`n" | Where-Object { $_ })
+        tracked_changes = $trackedChanges
+        untracked_files = $untracked
+        keyword_matches = $evidence.KeywordMatches
+        collect_training_files = $evidence.CollectTrainingFiles
+        local_only_commits = @($localOnlyLog -split "`n" | Where-Object { $_ })
+        canonical_only_commits = @($canonicalOnlyLog -split "`n" | Where-Object { $_ })
+    }
+
+    $payload | ConvertTo-Json -Depth 6 | Set-Content -LiteralPath $jsonPath -Encoding utf8
+
+    function LinesOrNone {
+        param([object[]]$Lines)
+        if (-not $Lines -or $Lines.Count -eq 0) { return @('- (none)') }
+        return @($Lines | ForEach-Object { "- `$_`" })
+    }
+
+    $md = @(
+        '# SYNC-GATE-001 Local Audit',
+        '',
+        "- Generated: `$($payload.generated_at)`",
+        "- Repo: `$Path`",
+        "- Branch: `$currentBranch`",
+        "- Local HEAD: `$($relation.LocalHead)`",
+        "- Canonical: `$Remote#$Branch`",
+        "- Canonical HEAD: `$($relation.CanonicalHead)`",
+        "- Relation: **$($relation.Relation)**",
+        "- Ahead / Behind: `$($relation.AheadBy) / $($relation.BehindBy)`",
+        '',
+        '## Tracked changes',
+        ''
+    )
+    $md += LinesOrNone $trackedChanges
+    $md += @('', '## Untracked files', '')
+    $md += LinesOrNone $untracked
+    $md += @('', '## jockey-25 / 3目標 / 調教48 evidence', '')
+    $md += LinesOrNone $evidence.KeywordMatches
+    $md += @('', '## collect_training.py', '')
+    $md += LinesOrNone $evidence.CollectTrainingFiles
+    $md += @('', '## Local-only commits (max 30)', '')
+    $md += LinesOrNone @($localOnlyLog -split "`n" | Where-Object { $_ })
+    $md += @('', '## Canonical-only commits (max 30)', '')
+    $md += LinesOrNone @($canonicalOnlyLog -split "`n" | Where-Object { $_ })
+    $md += @(
+        '',
+        '## Safety',
+        '',
+        '- No checkout',
+        '- No reset',
+        '- No clean',
+        '- No merge/rebase',
+        '- No database access',
+        '- No service stop',
+        '- No file deletion',
+        '- Only a Git fetch is used to obtain the canonical commit object; the working tree is not changed.'
+    )
+
+    $md -join "`n" | Set-Content -LiteralPath $mdPath -Encoding utf8
+
+    [pscustomobject]@{
+        Payload = $payload
+        JsonPath = $jsonPath
+        MarkdownPath = $mdPath
+    }
+}
+
+function Invoke-SelfTest {
+    $gitVersion = & git --version
+    if ($LASTEXITCODE -ne 0) { throw 'git is required for self-test.' }
+
+    $root = Join-Path ([IO.Path]::GetTempPath()) "sync-gate-selftest-$([guid]::NewGuid().ToString('N'))"
+    New-Item -ItemType Directory -Force -Path $root | Out-Null
+
+    try {
+        $canonical = Join-Path $root 'canonical'
+        & git init -b main $canonical | Out-Null
+        & git -C $canonical config user.email 'sync-gate@example.invalid'
+        & git -C $canonical config user.name 'SYNC GATE SELFTEST'
+        'A' | Set-Content -LiteralPath (Join-Path $canonical 'seed.txt') -Encoding utf8
+        & git -C $canonical add seed.txt
+        & git -C $canonical commit -m 'A' | Out-Null
+
+        $same = Join-Path $root 'same'
+        & git clone -q $canonical $same
+        $rSame = Get-GitRelation -Path $same -Remote $canonical -Branch 'main'
+        if ($rSame.Relation -ne 'same') { throw "Expected same, got $($rSame.Relation)" }
+
+        $ahead = Join-Path $root 'ahead'
+        & git clone -q $canonical $ahead
+        & git -C $ahead config user.email 'sync-gate@example.invalid'
+        & git -C $ahead config user.name 'SYNC GATE SELFTEST'
+        'B' | Set-Content -LiteralPath (Join-Path $ahead 'local.txt') -Encoding utf8
+        & git -C $ahead add local.txt
+        & git -C $ahead commit -m 'B-local' | Out-Null
+        $rAhead = Get-GitRelation -Path $ahead -Remote $canonical -Branch 'main'
+        if ($rAhead.Relation -ne 'ahead') { throw "Expected ahead, got $($rAhead.Relation)" }
+
+        'C' | Set-Content -LiteralPath (Join-Path $canonical 'canonical.txt') -Encoding utf8
+        & git -C $canonical add canonical.txt
+        & git -C $canonical commit -m 'C-canonical' | Out-Null
+
+        $rBehind = Get-GitRelation -Path $same -Remote $canonical -Branch 'main'
+        if ($rBehind.Relation -ne 'behind') { throw "Expected behind, got $($rBehind.Relation)" }
+
+        $rDiverged = Get-GitRelation -Path $ahead -Remote $canonical -Branch 'main'
+        if ($rDiverged.Relation -ne 'diverged') { throw "Expected diverged, got $($rDiverged.Relation)" }
+
+        $unrelated = Join-Path $root 'unrelated'
+        & git init -b main $unrelated | Out-Null
+        & git -C $unrelated config user.email 'sync-gate@example.invalid'
+        & git -C $unrelated config user.name 'SYNC GATE SELFTEST'
+        'X' | Set-Content -LiteralPath (Join-Path $unrelated 'x.txt') -Encoding utf8
+        & git -C $unrelated add x.txt
+        & git -C $unrelated commit -m 'X' | Out-Null
+        $rUnrelated = Get-GitRelation -Path $unrelated -Remote $canonical -Branch 'main'
+        if ($rUnrelated.Relation -ne 'unrelated') { throw "Expected unrelated, got $($rUnrelated.Relation)" }
+
+        Write-Host "SYNC-GATE-001 self-test PASS ($gitVersion)"
+        Write-Host 'same / ahead / behind / diverged / unrelated: PASS'
+    }
+    finally {
+        Remove-Item -LiteralPath $root -Recurse -Force -ErrorAction SilentlyContinue
+    }
+}
+
+if ($SelfTest) {
+    Invoke-SelfTest
+    exit 0
+}
+
+$resolvedRepo = Resolve-NeoJizoRepo -RequestedPath $RepoPath
+$result = Write-SyncReport -Path $resolvedRepo -Remote $CanonicalRepo -Branch $CanonicalBranch -Destination $OutputDir
+
+Write-Host ''
+Write-Host '============================================================' -ForegroundColor Cyan
+Write-Host ' SYNC-GATE-001 COMPLETE' -ForegroundColor Cyan
+Write-Host '============================================================' -ForegroundColor Cyan
+Write-Host "Repo           : $resolvedRepo"
+Write-Host "Relation       : $($result.Payload.relation)"
+Write-Host "Local HEAD     : $($result.Payload.local_head)"
+Write-Host "Canonical HEAD : $($result.Payload.canonical_head)"
+Write-Host "Ahead / Behind : $($result.Payload.ahead_by) / $($result.Payload.behind_by)"
+Write-Host "Tracked changes: $($result.Payload.tracked_changes.Count)"
+Write-Host "Untracked files: $($result.Payload.untracked_files.Count)"
+Write-Host "Keyword hits   : $($result.Payload.keyword_matches.Count)"
+Write-Host "collect_training.py: $($result.Payload.collect_training_files.Count)"
+Write-Host ''
+Write-Host "Markdown report: $($result.MarkdownPath)"
+Write-Host "JSON report    : $($result.JsonPath)"
+Write-Host ''
+Write-Host 'No checkout/reset/clean/merge/rebase/DB access/service stop/file deletion was performed.' -ForegroundColor Green
