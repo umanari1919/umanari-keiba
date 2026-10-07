@@ -41,10 +41,11 @@ jobs:
       - name: Parse PowerShell launcher
         shell: pwsh
         run: |
+          $tokens = $null
           $errors = $null
           [void][System.Management.Automation.Language.Parser]::ParseFile(
             (Resolve-Path "tools/run_neo_jizo_dirt_edge_context_discovery_025.ps1"),
-            [ref]$null,
+            [ref]$tokens,
             [ref]$errors
           )
           if ($errors.Count -gt 0) { $errors | ForEach-Object { Write-Error $_ }; exit 1 }
