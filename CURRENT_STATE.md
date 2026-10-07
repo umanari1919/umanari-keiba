@@ -86,6 +86,35 @@ Interpretation:
 - No licensed raw database was uploaded to GitHub.
 - Next local step is schema summarization from the already-created probe JSON, not another full filesystem scan.
 
+## BAOZ-PROBE-002 local evidence — 2026-10-08
+
+Founder-provided schema summary succeeded:
+
+- MDB databases: 27
+- Schema opened: 27
+- Schema failed: 0
+- ACE provider: Microsoft.ACE.OLEDB.16.0
+- Backup copies exist for 2026-10-08
+- Active prediction DB: `DB\BaoZ.mdb` (21 tables)
+- Active race-entry DB: `DB\BaoZ.ex.mdb` (出走馬T)
+- Master race DB: `DB\MasterDB\BaoZ-RA.mdb` (15 tables)
+- Master runner DB: `DB\MasterDB\BaoZ-SE.mdb` (出走馬マスタ)
+- Training DB: `DB\MasterDB\BaoZ-HC.mdb`
+  - ウッドチップ調教T
+  - 坂路調教T
+  - 出走履歴T
+  - 調教分析T
+- Odds are separated by wager type in O1-O6 MDB files.
+- Betting history DB exists separately as `BaoZ-Bet.mdb`.
+
+Important correction / confirmation:
+
+- BaoZ current local database does contain a dedicated Wood Chip training table.
+- BaoZ standard prediction/settings data is separated from near-raw master race/runner data.
+- Backup MDBs must not be used as the live baseline source unless explicitly needed for recovery.
+
+Next probe must inspect column metadata only for the minimum active tables. No race rows yet.
+
 ## Current model/research state
 
 - NEO JIZO baseline: `jockey-25`
