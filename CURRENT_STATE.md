@@ -1185,6 +1185,60 @@ Critical missing control:
 If the whole market segment became harder, raw selected-candidate win-rate decline overstates model deterioration.
 If BaoZ's lift over that market baseline fell materially, the model-specific degradation case becomes much stronger.
 
+## BAOZ-PROBE-022 local evidence — 2026-10-08
+
+Market-relative lift control completed for `P7-9 x dirt`.
+
+### Main comparison
+
+Before (2019-2023), BaoZ-selected candidates clearly outperformed the base P7-9 dirt runner population.
+
+Visible headline:
+- ALL base win rate: about 2%
+- ALL BaoZ-selected win rate: about 5%
+- before win lift: 2.32x
+
+After (2024-2026):
+- ALL base win rate remains about 2%
+- ALL BaoZ-selected win rate falls to about 3%
+
+The console table truncated the explicit `after_win_lift` column, so the exact post-period lift must be printed separately before making a precise model-specific degradation claim.
+
+### Calibration evidence
+
+For the selected ALL population:
+- 2019-2023 average implied probability: about 4%
+- actual selected win rate: about 5%
+- calibration gap: +0.21 percentage points
+
+2024-2026:
+- average implied probability: about 4%
+- actual selected win rate: about 3%
+- calibration gap: -0.97 percentage points
+
+This is strong evidence that the recent selected population underperforms the price-implied probability, whereas the earlier period was slightly above it.
+
+The same qualitative deterioration appears in P7/P8/P9 and both organizers.
+
+### Odds-band observations
+
+- ODDS10-19.9 selected calibration gap: +0.88pt -> -1.85pt
+- ODDS20-39.9: about 0.00pt -> -0.78pt
+- ODDS40-79.9: -0.04pt -> -0.38pt
+- ODDS<10 is poor in both periods and tiny.
+- ODDS80+ is very sparse and unstable.
+
+### Next required control
+
+Print exact yearly market-relative lift for 2019-2026:
+- all P7-9 dirt runners vs BaoZ rank1 selected subset
+- exact wins/n and win rates
+- lift
+- selected implied probability
+- selected calibration gap
+
+This will establish whether 2024 is a genuine step-change in model-specific lift rather than a period-average artifact.
+
 ## Current model/research state
 
 - NEO JIZO baseline: `jockey-25`
