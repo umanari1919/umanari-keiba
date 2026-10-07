@@ -148,6 +148,58 @@ Interpretation:
 - Do not equate GUI ◎ with any one rank column yet; GUI mark-generation logic must be identified first.
 - Next probe may read aggregate-only row statistics (COUNT/MIN/MAX/non-null coverage), but must not print horse-level rows.
 
+## BAOZ-PROBE-004 local evidence — 2026-10-08
+
+Founder-provided aggregate coverage probe succeeded.
+
+### Active BaoZ runner table
+
+`DB\BaoZ.ex.mdb / 出走馬T` and `DB\BaoZ.mdb / 出走馬T` returned identical aggregate counts:
+
+- rows: 3,227,343
+- distinct races: 284,152
+- raw date range: 1899-12-30 .. 2026-10-11
+- prediction-score coverage: 3,224,007 rows
+- betting-rank coverage: 3,209,565 rows
+- win odds/popularity coverage: 3,227,343 rows
+- win/place payout coverage: 3,226,801 rows
+- finish fields are non-null on all rows
+
+Rank=1 counts:
+
+- 予想タイム指数順位: 244,910
+- 馬券評価順位: 244,945
+- 得点V1順位: 245,080
+- 得点V2順位: 245,019
+- デフォルト得点順位: 245,003
+- 得点V3順位: 244,985
+
+### Master runner table
+
+`DB\MasterDB\BaoZ-SE.mdb / 出走馬マスタ`:
+
+- rows: 4,464,254
+- distinct races: 408,856
+- date range: 1986-11-02 .. 2026-10-11
+- race/runner keys, odds, popularity, and finish fields fully non-null
+- popularity rank=1 rows: 329,761
+
+### Race prediction table
+
+`DB\BaoZ.mdb / レースT`:
+
+- rows / distinct races: 473,438
+- date range: 1986-01-05 .. 2026-10-11
+- 予想勝ち指数 / 予想決着指数 / 波乱度 coverage: 359,687 races
+
+### Important interpretation
+
+- 1899-12-30 is treated as a sentinel/zero date and must not define the historical start boundary.
+- Future-dated race-card rows through 2026-10-11 are present; baseline result evaluation must exclude unresolved/future races.
+- Non-null finish fields do not prove a valid result; zero/default values must be filtered explicitly.
+- `BaoZ.ex.mdb` and `BaoZ.mdb` runner aggregates are identical, so they must not be double-counted.
+- Before mapping GUI marks, compare the six available ranking definitions directly on the same valid historical population.
+
 ## Current model/research state
 
 - NEO JIZO baseline: `jockey-25`
