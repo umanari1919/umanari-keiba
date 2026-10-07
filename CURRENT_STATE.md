@@ -1310,7 +1310,7 @@ The next engineering/research mission is `NEO-JIZO-DIRT-EDGE-025`.
 - Production promotion: not approved
 - Automatic wagering: disabled
 - BaoZ customization: not started
-- BaoZ baseline evidence: pending local read-only extraction
+- BaoZ baseline evidence: frozen retrospective P7-9 dirt diagnostic (PROBE-024); not contemporaneous pre-race validation
 
 ## Operating rule
 
@@ -1359,9 +1359,7 @@ CI:
 - Windows/Linux x Python 3.13/3.14
 - PowerShell launcher syntax parsing
 
-Local dependency remaining:
-
-Run the read-only market-context discovery once. The result determines the exact PostgreSQL source for popularity and win odds. Do not write model code or tune weights until this mapping is resolved.
+Local market/dirt evaluation context remains unavailable while PostgreSQL is offline; no new SQL retry is approved. Continue independent offline evaluation of available CORE-010 artifacts.
 
 
 
@@ -1418,4 +1416,72 @@ The evaluator:
 
 Until verified dirt/popularity/odds context is available, all results are **ALL_SURFACES**, not comparable to BaoZ P7-9 dirt baseline.
 
-The only next local step is the DB-free one-line CORE-010 offline evaluation runner. The local output has not yet been executed or validated against the user's actual CSV.
+The DB-free one-line CORE-010 offline evaluation ran on 2026-10-08. See observed results below; PARTIAL_INVALID_ROWS remains the active blocker.
+
+
+## NEO JIZO CORE-010 first local offline result — 2026-10-08
+
+User ran read-only local offline evaluator against their actual
+CORE-010_calibrated_probabilities.csv.
+
+- Total source rows read: 805,095.
+- Status: **PARTIAL_INVALID_ROWS**.
+- Temporal provenance: **HOLDOUT_CONTRACT_MATCHED** (split IDs match), but upstream full as-of integrity not independently certified.
+- No PostgreSQL access; no source CSV modification; no row-level export.
+- TEST: 95,933 scored valid runners; model-top1 7,790.
+- OOS: 89,907 scored valid runners; model-top1 7,120.
+
+### Observed top1 actual rates, all surfaces
+
+| Target | TEST | OOS |
+|---|---:|---:|
+| Win | 31.8357% | 29.7472% |
+| Top2 | 49.4095% | 48.9185% |
+| Top3 | 61.3094% | 60.9831% |
+
+OOS organizer split (top1):
+- JRA: 4,973; win 25.5178%, top2 44.8623%, top3 57.6915%.
+- NAR: 2,147; win 39.5435%, top2 58.3139%, top3 68.6074%.
+
+TEST organizer split (top1):
+- JRA: 4,546; win 27.2107%, top2 45.1166%, top3 56.9512%.
+- NAR: 3,244; win 38.3169%, top2 55.4255%, top3 67.4168%.
+
+### Important organizer-mix confounding
+
+NAR share among model-top1 selected horses:
+- TEST = 41.6431%.
+- OOS = 30.1545%.
+
+Using the fixed **TEST top1 JRA/NAR mix** and OOS group-specific rates:
+
+| Target | OOS unadjusted | OOS at TEST organizer mix | Organizer-standardized OOS minus TEST |
+|---|---:|---:|---:|
+| Win | 29.7472% | 31.3586% | -0.4771 percentage points |
+| Top2 | 48.9185% | 50.4640% | +1.0545 percentage points |
+| Top3 | 60.9831% | 62.2372% | +0.9279 percentage points |
+
+The crude 2.0885 percentage-point win decline decomposes descriptively into
+-0.4771pt at fixed TEST organizer mix and -1.6114pt composition contribution.
+This is a direct standardization, not a causal attribution or statistical significance test.
+
+The top1 lift shown in the first run (OOS 3.752 win, 3.085 top2,
+2.564 top3) is relative to **all runners in its own ALL_SURFACES group**,
+NOT a market-odds lift or comparable to BaoZ P7-9 dirt.
+
+### Next validation gate
+
+The first-run output did not print invalid row counts, reasons or the affected
+TEST/OOS races. These are essential before interpreting the rates as reliable.
+
+Implemented an improved offline evaluator on GitHub:
+- aggregate invalid reasons and totals (no horse identities);
+- invalid row counts by TRAIN/VALIDATION/SELECTION/TEST/OOS/unknown date;
+- number of affected races;
+- sensitivity evaluation after excluding races with detected invalid rows;
+- direct JRA/NAR scope standardization for all three targets.
+
+Next local execution is **one repeat of the DB-free CORE-010 evaluation**
+using the improved pinned runner after CI, not PostgreSQL recovery.
+
+Results remain **PARTIAL** and not direct evidence of superiority over BaoZ.
