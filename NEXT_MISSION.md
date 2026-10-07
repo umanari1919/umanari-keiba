@@ -1,49 +1,90 @@
 # NEXT MISSION
 
-Mission ID: `WEEKEND-REALITY-GATE-001`
-更新日: 2026-10-07
+Mission ID: `BAOZ-BASELINE-001`
+更新日: 2026-10-08
 Priority: P0
-Status: READY
+Status: IMPLEMENTATION READY / LOCAL EVIDENCE PENDING
 
 ## Goal
 
-Use the already-restored local code and local read-only data to determine the real
-operational state for the upcoming JRA weekend and the requested historical replay.
+Freeze and measure BaoZ immediately after initial setup, before any customization.
 
-Do not repeat source rescue.
+Determine whether BaoZ standard marks actually identify strong horses and separately
+whether single/place betting on those marks has positive or negative return.
 
-## Required checks
+## GitHub-side scope
 
-1. Run the local portfolio/weekend status from the existing
-   `neo-jizo-keiba` workspace.
-2. Verify PostgreSQL `mykeibadb` access is read-only for the prediction path.
-3. Re-check confirmed race-card availability for 2026-10-10 through 2026-10-12,
-   Tokyo / Kyoto.
-4. Keep special registrations separate from confirmed race cards.
-5. Execute or finish the pre-race-only replay for 2026-10-03 and 2026-10-04.
-6. For real cards that pass timing/roster gates, produce jockey-25
-   win / top-2 / top-3 predictions.
-7. Do not inject the unpromoted workout candidate into the personal output.
-8. Report only operational blockers and usable predictions/results.
+GitHub contains only:
+
+- evaluation contract
+- pure aggregation code
+- tests
+- CI
+- aggregate result format
+- research policy
+
+Do not upload MDB files, service keys, PostgreSQL DB files, or licensed raw data.
+
+## Local one-shot evidence required later
+
+Use a read-only local step to produce only the minimum research CSV defined in:
+
+`docs/BAOZ_BASELINE_001.md`
+
+Required fields:
+
+- race_id
+- runner_id
+- mark
+- finish_position
+
+Preferred fields:
+
+- popularity
+- win_return_yen
+- place_return_yen
+
+Optional slice fields:
+
+- surface
+- distance_m
+- class_name
+- track
+- field_size
+
+## Required outputs
+
+1. Target period.
+2. Race count.
+3. Runner count.
+4. ◎ / ○ / ▲ / △ starts.
+5. Win rate.
+6. Top-2 rate.
+7. Top-3 rate.
+8. Popularity-band performance.
+9. Win ROI when payout data is available.
+10. Place ROI when payout data is available.
 
 ## Safety
 
-- No source-file transport is needed.
-- Do not delete the local workspace or database.
-- Do not reset/clean the unborn local repository.
+- Do not change BaoZ settings.
+- Do not write to BaoZ MDB.
+- Do not delete or move BaoZ / JV-Link / UmaConn files.
+- Do not change PostgreSQL data.
+- Do not expose service keys.
+- Do not use BaoZ-derived values in public/commercial prediction outputs.
 - No automatic wagering.
-- No automatic research-to-production promotion.
-- Prefer read-only DB access for this gate.
 
 ## Completion
 
-Mission completes when we have:
+PASS requires reproducible aggregate evidence from the untouched baseline.
 
-- actual weekend source state,
-- actual history/readiness state,
-- 10/3–10/4 replay status,
-- real predicted race/runner counts if cards are available,
-- exact blockers if predictions are not yet possible.
+If local extraction is blocked, return PARTIAL/BLOCKED with the exact missing
+table/field/path/interface and do not compensate by manually changing BaoZ settings.
 
-After completion, the next mission should be chosen from actual runtime evidence,
-not from the old rescue backlog.
+## After this Mission
+
+Only after baseline PASS:
+
+`BAOZ-FAILURE-002` — analyze races where the BaoZ top mark fails and identify
+conditions for dangerous favorites without changing the frozen baseline.
