@@ -540,6 +540,73 @@ Conclusion:
 - The next research target is not "find profitable conditions"; it is to identify which longshot subsegments account for the accuracy decay.
 - BaoZ settings remain frozen.
 
+## BAOZ-PROBE-011 local evidence — 2026-10-08
+
+Accuracy-decay decomposition completed for `馬券評価順位=1 x popularity 7+`.
+
+Overall:
+
+- 2019-2023 win rate: 3.94%
+- 2024-2026 win rate: 2.79%
+- after-period observations: 3,589
+- expected wins at old rate: 141.37
+- observed wins: 100
+- total win deficit: -41.37
+
+### Popularity contribution
+
+- P7-9: -35.97 wins versus old rate
+- P10-12: -6.65
+- P13+: +0.75
+
+P7-9 explains about 87% of the total deficit before offsets.
+
+### Organizer contribution
+
+- organizer 2: -25.07
+- organizer 1: -16.61
+
+Both organizers contribute; the problem is not isolated to one organizer.
+
+### Track-type contribution
+
+- track type 1: -37.42
+- track type 0: -3.84
+- track type 2: -0.47
+
+Track type 1 accounts for about 90% of the total deficit before offsets and is the strongest current concentration signal.
+
+### Field-size contribution
+
+- 10-12: -16.44
+- 13-15: -13.73
+- 16+: -7.30
+- <=9: -3.15
+
+The decay is spread across field sizes, with 10-15 runners carrying most of the deficit.
+
+### Venue contribution
+
+Largest negative contributions:
+
+- 小倉: -8.77
+- 園田: -6.46
+- 佐賀: -4.26
+- 川崎: -4.11
+- 水沢: -4.07
+- 門別: -3.83
+- 中山: -3.42
+- 大井: -3.09
+
+Positive offsets include 高知, 名古屋, 京都, 函館.
+
+### Interpretation
+
+- The longshot accuracy decay is concentrated mainly in P7-9 and track-type code 1.
+- Race-condition and grade codes are not yet interpreted causally because they may encode organizer-specific structure and are highly confounded.
+- Next diagnostic target: resolve track-type semantics and decompose the intersection `P7-9 x track_type=1` by organizer, venue and year.
+- Continue prediction-quality diagnosis only; do not convert these findings into a wagering rule.
+
 ## Current model/research state
 
 - NEO JIZO baseline: `jockey-25`
