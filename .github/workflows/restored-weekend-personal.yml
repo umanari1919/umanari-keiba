@@ -1,0 +1,54 @@
+name: restored-weekend-personal
+
+on:
+  pull_request:
+    paths:
+      - "src/weekend_*.py"
+      - "src/publish_weekend_ui.py"
+      - "src/prospective_*.py"
+      - "src/build_prospective_history.py"
+      - "src/refresh_prospective_history.py"
+      - "src/temperature_calibration.py"
+      - "src/forecast_history_cache.py"
+      - "src/fast_history_restore.py"
+      - "src/jwk.py"
+      - "tests/test_weekend_personal_forecast.py"
+      - "web/index.html"
+      - "jwk.cmd"
+      - ".github/workflows/restored-weekend-personal.yml"
+  push:
+    branches: [main]
+    paths:
+      - "src/**"
+      - "tests/test_weekend_personal_forecast.py"
+      - "web/index.html"
+      - "jwk.cmd"
+      - ".github/workflows/restored-weekend-personal.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  offline:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+        python-version: ["3.13", "3.14"]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v6
+        with:
+          python-version: ${{ matrix.python-version }}
+      - name: Compile restored source
+        run: python -m compileall -q src
+      - name: Weekend personal forecast tests
+        shell: pwsh
+        run: |
+          $env:PYTHONPATH = "src"
+          python tests/test_weekend_personal_forecast.py
+          python src/check_weekend_source_status.py
+          python src/check_weekend_engine_check.py
+          python src/check_weekend_run.py
+          python src/check_weekend_ui.py
