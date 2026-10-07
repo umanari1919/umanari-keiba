@@ -347,7 +347,41 @@ function Write-SyncReport {
         canonical_only_commits = @($canonicalOnlyLog -split "`n" | Where-Object { $_ })
     }
 
-    $payload | ConvertTo-Json -Depth 6 | Set-Content -LiteralPath $jsonPath -Encoding utf8
+    $jsonPayload = [pscustomobject]@{
+        mission = [string]$payload.mission
+        generated_at = [string]$payload.generated_at
+        repo_path = [string]$payload.repo_path
+        branch = [string]$payload.branch
+        local_head = [string]$payload.local_head
+        canonical_repo = [string]$payload.canonical_repo
+        canonical_branch = [string]$payload.canonical_branch
+        canonical_head = [string]$payload.canonical_head
+        relation = [string]$payload.relation
+        ahead_by = $payload.ahead_by
+        behind_by = $payload.behind_by
+        origin = [string]$payload.origin
+        remotes = [string[]]@($payload.remotes)
+        tracked_changes = [string[]]@($payload.tracked_changes)
+        untracked_files = [string[]]@($payload.untracked_files)
+        keyword_matches = [string[]]@($payload.keyword_matches)
+        collect_training_files = [string[]]@($payload.collect_training_files)
+        local_only_commits = [string[]]@($payload.local_only_commits)
+        canonical_only_commits = [string[]]@($payload.canonical_only_commits)
+    }
+
+    $jsonWritten = $false
+    try {
+        ConvertTo-Json -InputObject $jsonPayload -Depth 6 |
+            Set-Content -LiteralPath $jsonPath -Encoding utf8
+        $jsonWritten = $true
+    }
+    catch {
+        # JSON is a convenience artifact. Do not abort the audit after the core
+        # Git/file inspection succeeded; preserve the error in a text fallback.
+        $jsonErrorPath = "$jsonPath.error.txt"
+        ("JSON_WRITE_FAILED: " + $_.Exception.Message) |
+            Set-Content -LiteralPath $jsonErrorPath -Encoding utf8
+    }
 
     function LinesOrNone {
         param([object[]]$Lines)
@@ -399,7 +433,7 @@ function Write-SyncReport {
 
     [pscustomobject]@{
         Payload = $payload
-        JsonPath = $jsonPath
+        JsonPath = if ($jsonWritten) { $jsonPath } else { $null }
         MarkdownPath = $mdPath
     }
 }
@@ -434,8 +468,12 @@ function Invoke-SelfTest {
         if ($rSame.Relation -ne 'same') { throw "Expected same, got $($rSame.Relation)" }
 
         $report = Write-SyncReport -Path $same -Remote $canonical -Branch 'main' -Destination ''
-        if (-not (Test-Path -LiteralPath $report.JsonPath -PathType Leaf)) {
+        if (-not $report.JsonPath -or -not (Test-Path -LiteralPath $report.JsonPath -PathType Leaf)) {
             throw 'Expected JSON report for empty Destination.'
+        }
+        $parsedReport = Get-Content -LiteralPath $report.JsonPath -Raw | ConvertFrom-Json
+        if ($parsedReport.relation -ne 'same') {
+            throw 'Expected JSON report relation=same.'
         }
         if (-not (Test-Path -LiteralPath $report.MarkdownPath -PathType Leaf)) {
             throw 'Expected Markdown report for empty Destination.'
@@ -513,6 +551,6 @@ Write-Host "Keyword hits   : $($result.Payload.keyword_matches.Count)"
 Write-Host "collect_training.py: $($result.Payload.collect_training_files.Count)"
 Write-Host ''
 Write-Host "Markdown report: $($result.MarkdownPath)"
-Write-Host "JSON report    : $($result.JsonPath)"
+Write-Host "JSON report    : $(if ($result.JsonPath) { $result.JsonPath } else { '(not written; Markdown report is authoritative)' })"
 Write-Host ''
 Write-Host 'No checkout/reset/clean/merge/rebase/DB access/service stop/file deletion was performed.' -ForegroundColor Green
