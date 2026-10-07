@@ -973,6 +973,56 @@ Status of this run: INCONCLUSIVE, not PASS/FAIL.
 
 The probe has been patched to compare active `BaoZ.ex.mdb` directly against backup `BaoZ.ex.mdb` copies.
 
+## BAOZ-PROBE-018 local evidence — 2026-10-08
+
+Cross-copy freeze audit completed.
+
+### Exact aggregate consistency
+
+For all three fixed periods below, aggregate fingerprints were exactly identical across the active `DB/BaoZ.ex.mdb` and every comparable same-day copy:
+
+- 2012-2018: 1,257,472 runner rows
+- 2019-2023: 915,062 runner rows
+- 2024-2025: 375,687 runner rows
+
+Comparable copies:
+
+- Backup/2026-10-08/BaoZ.ex.mdb
+- Backup/2026-10-08/BaoZ.MDB
+- DB/BaoZ.ex.mdb
+- DB/BaoZ.mdb
+
+Compared metrics included row count plus aggregate fingerprints for:
+- 馬券評価順位
+- 騎手評価
+- 調教師評価
+- 血統総合評価
+- 予想タイム指数
+- デフォルト得点
+- 得点
+
+All comparisons reported `exact_aggregate_match=True`.
+
+### Interpretation
+
+This is a strong SAME-DAY FREEZE PASS:
+
+- historical materialized prediction/evaluation values are stable across the backup/current copies available on 2026-10-08;
+- there is no evidence that the 01:20-01:47 refresh interval rewrote historical prediction aggregates.
+
+However, this is not yet a true multi-version longitudinal freeze test because every discovered comparable MDB is dated 2026-10-08.
+
+Temporal-integrity status therefore improves to:
+
+- pre-result prediction capability: PASS
+- per-race historical materialization for jockey/trainer features: STRONG PASS
+- same-day backup/current historical stability: PASS
+- long-horizon historical no-recompute proof: UNRESOLVED
+
+Next gate:
+- inspect `レースT.レコード作成fromtime` and other timestamp-like fields by historical period;
+- determine whether historical rows carry creation timestamps consistent with historical race periods or only recent reload/rebuild timestamps.
+
 ## Current model/research state
 
 - NEO JIZO baseline: `jockey-25`
