@@ -1080,6 +1080,62 @@ Therefore all historical BaoZ results remain labeled **retrospective evaluation*
 The baseline research may now return to the main performance question:
 - why `馬券評価順位=1 x popularity 7-9 x dirt` deteriorated after 2024.
 
+## BAOZ-PROBE-020 local evidence — 2026-10-08
+
+Feature-drift analysis completed for `馬券評価順位=1 x popularity 7-9 x dirt`, comparing 2019-2023 vs 2024-2026.
+
+### Signals whose winner/non-winner separation became stronger
+
+Raw mean separation (`winner mean - nonwinner mean`) increased notably for:
+
+- 予想タイム指数: +0.38 -> +4.23
+- 先行指数: +2.15 -> +5.32
+- 血統距離評価: -0.23 -> +1.14
+- 血統トラック評価: +1.18 -> +2.32
+- 血統総合評価: +1.14 -> +2.22
+- 枠順評価: -0.65 -> +2.08
+- 脚質評価: +2.97 -> +3.65
+- タイム指数回帰推定値: +2.04 -> +3.54
+
+These results argue against a blanket collapse of all BaoZ predictive features in the recent P7-9 dirt population.
+
+### Signals whose raw winner separation weakened or flipped
+
+- 騎手評価: -0.05 -> -0.90
+- 調教師評価: +0.41 -> -1.32
+- 血統距離評価B: -0.15 -> -0.91
+- 血統トラック評価B: -0.19 -> -0.83
+- 血統成長力評価B: +0.40 -> -1.15
+- 血統総合評価B: -0.19 -> -1.16
+- タイム指数上昇係数: +0.72 -> -1.06
+- 得点V1: +0.84 -> +0.40
+- 得点V2: +1.02 -> +0.51
+
+`得点` / `得点V3` winner separation is almost unchanged (~+0.35 -> +0.33), despite the actual win-rate drop in this segment.
+
+### Composition shifts
+
+Largest raw mean shifts include:
+
+- 距離増減: 34.21 -> 61.50
+- 脚質評価: 49.20 -> 45.44
+- 先行指数: 45.34 -> 42.38
+- 血統総合評価B: 48.76 -> 47.03
+- 血統トラック評価B: 51.76 -> 50.13
+- 騎手評価: 45.30 -> 44.04
+- 調教師評価: 47.62 -> 46.32
+
+These suggest the recent selected population is compositionally different, but raw-scale shifts are not directly comparable across features.
+
+### Important methodological caution
+
+Raw mean separation is scale-dependent and does not establish causal feature importance.
+
+Next gate:
+- compute standardized winner-vs-nonwinner effect sizes using within-period dispersion;
+- rank which features genuinely gained/lost discrimination on a comparable scale;
+- include winner/nonwinner sample sizes and yearly stability before proposing any BaoZ weighting hypothesis.
+
 ## Current model/research state
 
 - NEO JIZO baseline: `jockey-25`
