@@ -8,19 +8,182 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
-function Get-DefaultBaoZPath {
-    $candidates = @(
-        (Join-Path $env:USERPROFILE 'Documents\BaoZ'),
-        (Join-Path $env:USERPROFILE 'OneDrive\Documents\BaoZ')
-    ) | Select-Object -Unique
+function Resolve-BaoZRootFromFile {
+    param([Parameter(Mandatory)][string]$FilePath)
 
-    foreach ($candidate in $candidates) {
-        if (Test-Path -LiteralPath $candidate -PathType Container) {
-            return (Resolve-Path -LiteralPath $candidate).Path
+    $dir = Split-Path -Parent $FilePath
+    if (-not $dir) { return $null }
+
+    $current = Get-Item -LiteralPath $dir -ErrorAction SilentlyContinue
+    for ($i = 0; $i -lt 6 -and $current; $i++) {
+        if ($current.Name -ieq 'BaoZ') {
+            return $current.FullName
+        }
+        $current = $current.Parent
+    }
+
+    return $dir
+}
+
+function Find-BaoZMarker {
+    param(
+        [Parameter(Mandatory)][string]$Root,
+        [int]$Depth = 4
+    )
+
+    if (-not (Test-Path -LiteralPath $Root -PathType Container)) {
+        return $null
+    }
+
+    $names = @('BaoZ.mdb', 'BaoZ.MDB', 'BaoZ.bzi', 'BaoZ.BZI')
+    foreach ($name in $names) {
+        try {
+            $hit = Get-ChildItem -LiteralPath $Root -Filter $name -File -Recurse -Depth $Depth -ErrorAction SilentlyContinue |
+                Select-Object -First 1
+            if ($hit) {
+                return (Resolve-BaoZRootFromFile -FilePath $hit.FullName)
+            }
+        }
+        catch {}
+    }
+
+    return $null
+}
+
+function Get-DefaultBaoZPath {
+    $directCandidates = New-Object System.Collections.Generic.List[string]
+
+    function Add-Candidate {
+        param([string]$Path)
+        if ([string]::IsNullOrWhiteSpace($Path)) { return }
+        try {
+            $full = [Environment]::ExpandEnvironmentVariables($Path.Trim('"'))
+            if ($full -and -not $directCandidates.Contains($full)) {
+                [void]$directCandidates.Add($full)
+            }
+        }
+        catch {}
+    }
+
+    # 1) Standard user folders.
+    Add-Candidate ([Environment]::GetFolderPath('MyDocuments'))
+    Add-Candidate (Join-Path $env:USERPROFILE 'Documents')
+    if ($env:OneDrive) {
+        Add-Candidate (Join-Path $env:OneDrive 'Documents')
+    }
+    if ($env:OneDriveConsumer) {
+        Add-Candidate (Join-Path $env:OneDriveConsumer 'Documents')
+    }
+    Add-Candidate (Join-Path $env:USERPROFILE 'Desktop')
+    Add-Candidate $env:LOCALAPPDATA
+    Add-Candidate $env:APPDATA
+    Add-Candidate $env:PROGRAMDATA
+
+    # 2) Common direct install/data locations.
+    Add-Candidate 'C:\BaoZ'
+    Add-Candidate 'D:\BaoZ'
+    Add-Candidate 'C:\BAOZ'
+    Add-Candidate 'D:\BAOZ'
+    Add-Candidate ([Environment]::GetEnvironmentVariable('ProgramFiles'))
+    Add-Candidate ([Environment]::GetEnvironmentVariable('ProgramFiles(x86)'))
+
+    # 3) Running BaoZ-related process paths.
+    try {
+        Get-Process -ErrorAction SilentlyContinue |
+            Where-Object { $_.ProcessName -match '(?i)baoz|馬王' } |
+            ForEach-Object {
+                try {
+                    if ($_.Path) {
+                        Add-Candidate (Split-Path -Parent $_.Path)
+                    }
+                }
+                catch {}
+            }
+    }
+    catch {}
+
+    # 4) Start-menu/Desktop shortcuts.
+    try {
+        $shortcutRoots = @(
+            [Environment]::GetFolderPath('Desktop'),
+            [Environment]::GetFolderPath('CommonDesktopDirectory'),
+            [Environment]::GetFolderPath('StartMenu'),
+            [Environment]::GetFolderPath('CommonStartMenu')
+        ) | Where-Object { $_ -and (Test-Path -LiteralPath $_) }
+
+        $shell = New-Object -ComObject WScript.Shell
+        foreach ($root in $shortcutRoots) {
+            Get-ChildItem -LiteralPath $root -Filter '*.lnk' -File -Recurse -Depth 5 -ErrorAction SilentlyContinue |
+                Where-Object { $_.Name -match '(?i)baoz|馬王' } |
+                ForEach-Object {
+                    try {
+                        $target = $shell.CreateShortcut($_.FullName).TargetPath
+                        if ($target) {
+                            Add-Candidate (Split-Path -Parent $target)
+                        }
+                    }
+                    catch {}
+                }
+        }
+        try { [void][Runtime.InteropServices.Marshal]::ReleaseComObject($shell) } catch {}
+    }
+    catch {}
+
+    # 5) Installed-app registry entries. Values only; no keys/secrets are exported.
+    $uninstallRoots = @(
+        'HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\*',
+        'HKLM:\Software\Microsoft\Windows\CurrentVersion\Uninstall\*',
+        'HKLM:\Software\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall\*'
+    )
+    foreach ($root in $uninstallRoots) {
+        try {
+            Get-ItemProperty $root -ErrorAction SilentlyContinue |
+                Where-Object { $_.DisplayName -match '(?i)baoz|馬王' } |
+                ForEach-Object {
+                    if ($_.InstallLocation) {
+                        Add-Candidate $_.InstallLocation
+                    }
+                    if ($_.DisplayIcon) {
+                        $icon = ([string]$_.DisplayIcon -split ',')[0].Trim('"')
+                        if ($icon) {
+                            Add-Candidate (Split-Path -Parent $icon)
+                        }
+                    }
+                }
+        }
+        catch {}
+    }
+
+    # 6) Inspect candidates with a bounded search.
+    foreach ($candidate in $directCandidates) {
+        $found = Find-BaoZMarker -Root $candidate -Depth 4
+        if ($found) {
+            return (Resolve-Path -LiteralPath $found).Path
         }
     }
 
-    throw "BaoZ folder not found in standard Documents locations. Re-run with -BaoZPath '<path>'."
+    # 7) Last-resort bounded drive-root search. Avoid a whole-disk crawl.
+    foreach ($drive in @('C:\', 'D:\')) {
+        if (-not (Test-Path -LiteralPath $drive)) { continue }
+        try {
+            $named = Get-ChildItem -LiteralPath $drive -Directory -Filter 'BaoZ' -Recurse -Depth 4 -ErrorAction SilentlyContinue |
+                Select-Object -First 10
+            foreach ($dir in $named) {
+                $found = Find-BaoZMarker -Root $dir.FullName -Depth 4
+                if ($found) {
+                    return (Resolve-Path -LiteralPath $found).Path
+                }
+            }
+        }
+        catch {}
+    }
+
+    throw @"
+BaoZ data folder was not found automatically.
+The probe searched Documents/OneDrive, running processes, shortcuts,
+installed-app registry locations, common install folders, and bounded C:/D: roots.
+No BaoZ files were modified.
+"@
 }
 
 function Test-ComProgId {
@@ -112,6 +275,7 @@ function Get-MdbSchema {
 }
 
 if (-not $BaoZPath) {
+    Write-Host 'BaoZ path: auto-discovery...' -ForegroundColor DarkGray
     $BaoZPath = Get-DefaultBaoZPath
 }
 $BaoZPath = (Resolve-Path -LiteralPath $BaoZPath).Path
@@ -198,6 +362,7 @@ Write-Host ''
 Write-Host '============================================================' -ForegroundColor Cyan
 Write-Host ' BAOZ-PROBE-001 COMPLETE' -ForegroundColor Cyan
 Write-Host '============================================================' -ForegroundColor Cyan
+Write-Host ("BaoZ location found  : YES")
 Write-Host ("BaoZ files          : {0}" -f $relativeFiles.Count)
 Write-Host ("MDB files           : {0}" -f $mdbs.Count)
 Write-Host ("JV-Link COM         : {0}" -f $result.environment.jvlink_com_registered)
