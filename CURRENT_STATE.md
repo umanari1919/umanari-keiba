@@ -463,6 +463,83 @@ Notable improvement:
   3. venue-mix changes in some segments.
 - Next analysis should compare longshot rank-1 selections before/after 2024 on average odds, realized win rate, winner payout, and implied market probability.
 
+## BAOZ-PROBE-010 local evidence — 2026-10-08
+
+Price-vs-accuracy decomposition completed for `馬券評価順位=1`.
+
+### Overall shift: 2019-2023 -> 2024-2026
+
+- win rate: 30.76% -> 30.36%
+- top3: 60.13% -> 59.62%
+- average odds: 7.307 -> 7.826
+- average winner payout: 291.71 -> 275.80
+- provisional return index: 89.742 -> 83.722
+
+Broad rank-1 predictive quality is nearly stable.
+
+### Longshot shift: popularity 7+
+
+- n: 6,093 -> 3,589
+- win rate: 3.94% -> 2.79%
+- top3: 16.79% -> 14.46%
+- average odds: 38.530 -> 42.637
+- average winner payout: 2,718.17 -> 2,811.40
+- average implied probability: 3.80% -> 3.53%
+- provisional return index: 107.067 -> 78.334
+
+Interpretation:
+
+- recent deterioration is NOT primarily explained by shorter prices;
+- prices became longer on average while hit rate deteriorated materially;
+- the dominant issue is longshot-selection accuracy decay.
+
+### Popularity sub-bands
+
+P7-9:
+- win 4.42% -> 3.12%
+- average odds 29.781 -> 33.667
+- return index 99.974 -> 75.817
+
+P10-12:
+- win 2.46% -> 1.48%
+- average odds 59.357 -> 64.786
+- average winner payout 4,601.03 -> 3,128.00
+- return index 113.172 -> 46.204
+
+P13+:
+- very small samples: n 226 -> 127
+- win 1.77% -> 2.36%
+- return index is unstable/extreme and must not drive conclusions
+
+### Odds-band evidence within P7+
+
+The same accuracy deterioration appears across several odds bands:
+
+- odds 10-19.9: win 6.97% -> 4.68%
+- odds 20-39.9: win 3.77% -> 3.22%
+- odds 40-79.9: win 1.69% -> 1.08%
+- odds 80-159.9: win 1.21% -> 0.93%
+
+This reinforces a model-signal degradation hypothesis rather than simple price compression.
+
+### Yearly P7+
+
+- 2019: win 4.48% / top3 16.18%
+- 2020: 4.04% / 18.00%
+- 2021: 2.69% / 15.92%
+- 2022: 4.71% / 17.67%
+- 2023: 4.00% / 16.49%
+- 2024: 2.66% / 13.79%
+- 2025: 2.99% / 15.41%
+- 2026: 2.68% / 14.07%
+
+Conclusion:
+
+- Broad rank-1 accuracy remains stable.
+- Longshot-specific rank-1 accuracy has deteriorated since 2024.
+- The next research target is not "find profitable conditions"; it is to identify which longshot subsegments account for the accuracy decay.
+- BaoZ settings remain frozen.
+
 ## Current model/research state
 
 - NEO JIZO baseline: `jockey-25`
