@@ -99,22 +99,23 @@ function Get-FeatureStats {
 
     $sql=@"
 SELECT
-  Count([$Feature]) AS N,
-  Avg([$Feature]) AS AvgAll,
-  Min([$Feature]) AS MinAll,
-  Max([$Feature]) AS MaxAll,
-  Avg(IIf([確定着順]=1,[$Feature],Null)) AS AvgWin,
-  Avg(IIf([確定着順] Between 1 And 3,[$Feature],Null)) AS AvgTop3,
-  Avg(IIf([確定着順]<>1,[$Feature],Null)) AS AvgNonWin
-FROM [出走馬T]
-WHERE [年月日] Between #2012-01-01# And #2026-10-08#
-  AND [確定着順] Between 1 And 28
-  AND [馬番] > 0
-  AND [馬券評価順位]=1
-  AND [単勝人気] Between 7 And 9
-  AND [トラック種別コード]=1
+  Count(S.[$Feature]) AS N,
+  Avg(S.[$Feature]) AS AvgAll,
+  Min(S.[$Feature]) AS MinAll,
+  Max(S.[$Feature]) AS MaxAll,
+  Avg(IIf(S.[確定着順]=1,S.[$Feature],Null)) AS AvgWin,
+  Avg(IIf(S.[確定着順] Between 1 And 3,S.[$Feature],Null)) AS AvgTop3,
+  Avg(IIf(S.[確定着順]<>1,S.[$Feature],Null)) AS AvgNonWin
+FROM [出走馬T] AS S INNER JOIN [レースT] AS R
+  ON S.[競走コード]=R.[競走コード]
+WHERE S.[年月日] Between #2012-01-01# And #2026-10-08#
+  AND S.[確定着順] Between 1 And 28
+  AND S.[馬番] > 0
+  AND S.[馬券評価順位]=1
+  AND S.[単勝人気] Between 7 And 9
+  AND R.[トラック種別コード]=1
   AND $PeriodWhere
-  AND [$Feature] Is Not Null
+  AND S.[$Feature] Is Not Null
 "@
     return Invoke-Row $Connection $sql
 }
@@ -124,7 +125,7 @@ if(-not $BaoZPath){
     $BaoZPath=Find-BaoZRoot
 }
 $BaoZPath=(Resolve-Path -LiteralPath $BaoZPath).Path
-$db=Join-Path $BaoZPath 'DB\BaoZ.ex.mdb'
+$db=Join-Path $BaoZPath 'DB\BaoZ.mdb'
 
 $opened=Open-ReadOnlyConnection -Path $db
 $conn=$opened.Connection
@@ -160,8 +161,8 @@ try{
         '得点V3'
     ) | Where-Object { $cols -contains $_ }
 
-    $before='[年月日] Between #2019-01-01# And #2023-12-31#'
-    $after='[年月日] Between #2024-01-01# And #2026-10-08#'
+    $before='S.[年月日] Between #2019-01-01# And #2023-12-31#'
+    $after='S.[年月日] Between #2024-01-01# And #2026-10-08#'
 
     $rows=@()
     foreach($feature in $wanted){
