@@ -66,6 +66,26 @@ Principles:
 - BaoZ MDB originals, service keys, and PostgreSQL DB remain local only.
 - GitHub stores research code, contracts, tests, and aggregate evidence.
 
+## BAOZ-PROBE-001 local evidence — 2026-10-08
+
+Founder-provided local execution succeeded:
+
+- BaoZ location auto-discovered: YES
+- BaoZ files: 28
+- MDB files: 27
+- JV-Link COM registered: True
+- UmaConn COM registered: True
+- Row data read: False
+- BaoZ files modified: False
+- Probe artifact: local temp only
+
+Interpretation:
+
+- BaoZ, JV-Link, and UmaConn are present in the same Windows runtime.
+- Schema-only inspection is available without reading race rows.
+- No licensed raw database was uploaded to GitHub.
+- Next local step is schema summarization from the already-created probe JSON, not another full filesystem scan.
+
 ## Current model/research state
 
 - NEO JIZO baseline: `jockey-25`
