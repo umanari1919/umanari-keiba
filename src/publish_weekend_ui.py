@@ -8,7 +8,7 @@ def render(personal,replay):
     data=json.dumps(dict(personal=personal,replay=replay),ensure_ascii=False).replace('</','<\/')
     return """<!-- PERSONAL_WEEKEND_START -->
 <section id="personal-weekend" style="max-width:1100px;margin:24px auto;padding:24px;background:#fff;color:#17253a;border:2px solid #315b85;border-radius:16px">
-<h2>JRA 個人用予想 · jockey-25</h2><p>10月10〜12日の予想と、10月3・4日の事前情報限定の再現予想。</p>
+<h2>NEO JIZO FORWARD｜JRA 個人用予想 · jockey-25</h2><p>10月10〜12日の予想と、10月3・4日の事前情報限定の再現予想。</p>
 <div style="display:flex;gap:12px;flex-wrap:wrap"><label>表示 <select id="pw-mode"><option value="personal">週末の予想</option><option value="replay">10月3・4日 再現予想</option></select></label><label>日付 <select id="pw-day"></select></label><label>開催 <select id="pw-venue"></select></label><label>レース <select id="pw-race"></select></label><label><input type="checkbox" id="pw-result">再現結果を表示</label></div>
 <p id="pw-status" role="status"></p><div id="pw-table" style="overflow-x:auto"></div><p style="font-size:13px">1着・2着以内・3着以内のモデル推定値です。再現予想は現在保存されている過去記録から計算し、当時の配信を証明するものではありません。自動購入は行いません。</p>
 </section><script>
