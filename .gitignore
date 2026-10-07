@@ -1,0 +1,20 @@
+# Locally sourced and licensed NEO JIZO data must never be committed.
+artifacts/
+datasets/
+runtime/
+*.mdb
+*.MDB
+*.accdb
+*.ACCDB
+*.sqlite
+*.sqlite3
+*.db
+*.dump
+*.bak
+*.pgpass
+.env
+.env.*
+!.env.example
+__pycache__/
+*.py[cod]
+.venv/
