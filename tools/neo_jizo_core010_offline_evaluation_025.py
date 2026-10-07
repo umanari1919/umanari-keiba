@@ -154,22 +154,34 @@ def parse(row: dict[str, str]) -> tuple[date, str, str, str, tuple[int, int, int
         raise ValueError("missing unique key")
     dt = date.fromisoformat(_value(row, "race_date")[:10])
     raw_scope = _value(row, "race_scope_cd")
-    scope_number = float(raw_scope)
+    try:
+        scope_number = float(raw_scope)
+    except ValueError:
+        raise ValueError("invalid race_scope_cd") from None
     scope = {1.0: "JRA", 2.0: "NAR"}.get(scope_number)
     if not scope:
         raise ValueError("invalid race_scope_cd")
-    raw_labels = tuple(float(_value(row, f"label_{t}")) for t in TARGETS)
+    try:
+        raw_labels = tuple(float(_value(row, f"label_{t}")) for t in TARGETS)
+    except ValueError:
+        raise ValueError("invalid target labels") from None
     if any(not math.isfinite(x) or x not in (0.0, 1.0) for x in raw_labels):
         raise ValueError("invalid target labels")
     labels = tuple(int(x) for x in raw_labels)
     if not labels[0] <= labels[1] <= labels[2]:
         raise ValueError("inconsistent outcome labels")
-    probs = tuple(float(_value(row, f"p_{t}_cal")) for t in TARGETS)
+    try:
+        probs = tuple(float(_value(row, f"p_{t}_cal")) for t in TARGETS)
+    except ValueError:
+        raise ValueError("invalid probability") from None
     if not all(math.isfinite(x) and 0 <= x <= 1 for x in probs):
         raise ValueError("invalid probability")
     if not probs[0] <= probs[1] <= probs[2]:
         raise ValueError("non-monotonic predicted targets")
-    ranking_score = float(_value(row, "p_win"))
+    try:
+        ranking_score = float(_value(row, "p_win"))
+    except ValueError:
+        raise ValueError("invalid raw win score") from None
     if not math.isfinite(ranking_score) or not 0 <= ranking_score <= 1:
         raise ValueError("invalid raw win score")
     return dt, scope, rid, horse, labels, probs, ranking_score
@@ -189,8 +201,12 @@ def _invalid_reason(exc: Exception) -> str:
         return "MISSING_RUNNER_KEY"
     if "isoformat" in detail or "invalid isoformat" in detail:
         return "INVALID_RACE_DATE"
-    if "race_scope_cd" in detail or "could not convert string to float" in detail:
-        return "INVALID_OR_MISSING_SCOPE_OR_NUMERIC_VALUE"
+    if "race_scope_cd" in detail:
+        return "INVALID_OR_MISSING_SCOPE"
+    if "label_win" in detail or "label_top2" in detail or "label_top3" in detail:
+        return "INVALID_OR_MISSING_OUTCOME_LABELS"
+    if "p_win" in detail or "p_top2" in detail or "p_top3" in detail:
+        return "INVALID_OR_NONMONOTONIC_PROBABILITIES"
     if "inconsistent outcome labels" in detail:
         return "INCONSISTENT_OUTCOME_LABELS"
     if "invalid target labels" in detail:
