@@ -67,18 +67,54 @@ function Invoke-Scalar {
 
 function Get-FieldNames {
     param([Parameter(Mandatory)]$Connection,[Parameter(Mandatory)][string]$Table)
+
+    # ACE/Jet through ADO does not reliably accept SELECT TOP 0.
+    # First use an empty-result SELECT; if the provider rejects that,
+    # fall back to the ADO columns schema.
     $rs=$null
     try{
-        $rs=$Connection.Execute("SELECT TOP 0 * FROM [$Table]")
-        $names=@()
-        for($i=0;$i -lt $rs.Fields.Count;$i++){
-            $names += [string]$rs.Fields.Item($i).Name
+        try{
+            $rs=$Connection.Execute("SELECT * FROM [$Table] WHERE 1=0")
+        }catch{
+            $rs=$null
         }
-        return @($names)
+
+        if($rs){
+            $names=@()
+            for($i=0;$i -lt $rs.Fields.Count;$i++){
+                $names += [string]$rs.Fields.Item($i).Name
+            }
+            return @($names)
+        }
     }finally{
         if($rs){
             try{$rs.Close()}catch{}
             try{[void][Runtime.InteropServices.Marshal]::ReleaseComObject($rs)}catch{}
+        }
+    }
+
+    $schema=$null
+    try{
+        $schema=$Connection.OpenSchema(4) # adSchemaColumns
+        $cols=@()
+        while(-not $schema.EOF){
+            $tableName=[string]$schema.Fields.Item('TABLE_NAME').Value
+            if($tableName -eq $Table){
+                $columnName=[string]$schema.Fields.Item('COLUMN_NAME').Value
+                $ordinalValue=$schema.Fields.Item('ORDINAL_POSITION').Value
+                $ordinal=if($ordinalValue -is [DBNull]){2147483647}else{[int]$ordinalValue}
+                $cols += [pscustomobject]@{
+                    ordinal=$ordinal
+                    name=$columnName
+                }
+            }
+            $schema.MoveNext()
+        }
+        return @($cols | Sort-Object ordinal | ForEach-Object { $_.name })
+    }finally{
+        if($schema){
+            try{$schema.Close()}catch{}
+            try{[void][Runtime.InteropServices.Marshal]::ReleaseComObject($schema)}catch{}
         }
     }
 }
