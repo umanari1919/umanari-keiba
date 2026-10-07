@@ -1,90 +1,108 @@
 # NEXT MISSION
 
-Mission ID: `BAOZ-BASELINE-001`
+Mission ID: `NEO-JIZO-DIRT-EDGE-025`
 更新日: 2026-10-08
 Priority: P0
-Status: IMPLEMENTATION READY / LOCAL EVIDENCE PENDING
+Status: DESIGN / IMPLEMENTATION READY
 
 ## Goal
 
-Freeze and measure BaoZ immediately after initial setup, before any customization.
+Turn the confirmed BaoZ baseline weakness in
+`馬券評価順位=1 x popularity 7-9 x dirt`
+into an independent NEO JIZO benchmark and model-design test.
 
-Determine whether BaoZ standard marks actually identify strong horses and separately
-whether single/place betting on those marks has positive or negative return.
+The mission is not to copy or tune BaoZ.
+BaoZ remains a private benchmark.
 
-## GitHub-side scope
+## Frozen evidence
 
-GitHub contains only:
+For P7-9 dirt:
 
-- evaluation contract
-- pure aggregation code
-- tests
-- CI
-- aggregate result format
-- research policy
+- market base win rate:
+  - 2019-2023: 1.958%
+  - 2024-2026: 1.877%
+- BaoZ-selected win rate:
+  - 2019-2023: 4.536%
+  - 2024-2026: 2.955%
+- market-relative lift:
+  - 2.317x -> 1.574x
+- selection advantage OR:
+  - 2.438 -> 1.609
+- post/pre OR ratio:
+  - 0.660
+  - 95% CI [0.487, 0.894]
+  - p = 0.007374
 
-Do not upload MDB files, service keys, PostgreSQL DB files, or licensed raw data.
+## Research question
 
-## Local one-shot evidence required later
+Can NEO JIZO preserve or improve market-relative discrimination in this regime
+using independent, time-aware features?
 
-Use a read-only local step to produce only the minimum research CSV defined in:
+## Feature families to test
 
-`docs/BAOZ_BASELINE_001.md`
+1. speed / expected time
+2. pace and forward-position ability
+3. running-style suitability
+4. bloodline track/distance suitability
+5. course / draw / field-size context
+6. Field Strength
+7. training
+8. jockey/trainer, evaluated with strict time-aware validation
 
-Required fields:
+## Required probability targets
 
-- race_id
-- runner_id
-- mark
-- finish_position
+Evaluate separately:
 
-Preferred fields:
+- win probability
+- top-2 probability
+- top-3 probability
 
-- popularity
-- win_return_yen
-- place_return_yen
+Do not optimize win rate alone.
 
-Optional slice fields:
+## Evaluation design
 
-- surface
-- distance_m
-- class_name
-- track
-- field_size
+Primary comparison windows:
 
-## Required outputs
+- reference: 2019-2023
+- recent: 2024 onward
 
-1. Target period.
-2. Race count.
-3. Runner count.
-4. ◎ / ○ / ▲ / △ starts.
-5. Win rate.
-6. Top-2 rate.
-7. Top-3 rate.
-8. Popularity-band performance.
-9. Win ROI when payout data is available.
-10. Place ROI when payout data is available.
+Primary target regime:
 
-## Safety
+- dirt
+- popularity 7-9 used only for benchmark slicing, not as a model input unless explicitly approved
+- compare NEO JIZO score/rank against market and BaoZ private benchmark
 
-- Do not change BaoZ settings.
-- Do not write to BaoZ MDB.
-- Do not delete or move BaoZ / JV-Link / UmaConn files.
-- Do not change PostgreSQL data.
-- Do not expose service keys.
-- Do not use BaoZ-derived values in public/commercial prediction outputs.
+Required metrics:
+
+- win / top2 / top3
+- calibration
+- market-relative lift
+- odds-band stability
+- JRA / NAR split
+- venue split
+- field-size split
+- yearly stability
+- confidence intervals where practical
+
+## Guardrails
+
+- Keep BaoZ settings unchanged.
+- Do not use BaoZ outputs as public/commercial prediction content.
+- Do not train NEO JIZO to imitate BaoZ rank/score.
+- Do not leak future statistics into historical rows.
+- Keep raw MDB/licensed data local.
+- GitHub receives only code, contracts, tests, sanitized aggregate evidence, and hashes.
+- No destructive DB changes.
 - No automatic wagering.
 
-## Completion
+## Completion gate
 
-PASS requires reproducible aggregate evidence from the untouched baseline.
+PASS requires a reproducible NEO JIZO benchmark showing whether independent
+features improve recent P7-9 dirt discrimination relative to:
 
-If local extraction is blocked, return PARTIAL/BLOCKED with the exact missing
-table/field/path/interface and do not compensate by manually changing BaoZ settings.
+1. market baseline;
+2. BaoZ frozen private benchmark;
+3. NEO JIZO's own older-period performance.
 
-## After this Mission
+If recent lift does not improve, report FAIL/PARTIAL rather than tuning until it does.
 
-Only after baseline PASS:
-
-`BAOZ-FAILURE-002` — analyze races where the BaoZ top mark fails and identify
-conditions for dangerous favorites without changing the frozen baseline.
