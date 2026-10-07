@@ -5,6 +5,9 @@ on:
     paths:
       - "src/weekend_*.py"
       - "src/publish_weekend_ui.py"
+      - "src/publish_prospective_forecast.py"
+      - "src/publish_training_oos_2026.py"
+      - "src/publish_training_diagnostics_2026.py"
       - "src/prospective_*.py"
       - "src/build_prospective_history.py"
       - "src/refresh_prospective_history.py"
@@ -13,6 +16,7 @@ on:
       - "src/fast_history_restore.py"
       - "src/jwk.py"
       - "tests/test_weekend_personal_forecast.py"
+      - "tests/test_neo_jizo_brand_ui.py"
       - "web/index.html"
       - "jwk.cmd"
       - ".github/workflows/restored-weekend-personal.yml"
@@ -21,6 +25,7 @@ on:
     paths:
       - "src/**"
       - "tests/test_weekend_personal_forecast.py"
+      - "tests/test_neo_jizo_brand_ui.py"
       - "web/index.html"
       - "jwk.cmd"
       - ".github/workflows/restored-weekend-personal.yml"
@@ -53,3 +58,4 @@ jobs:
           python src/check_weekend_engine_check.py
           python src/check_weekend_run.py
           python src/check_weekend_ui.py
+          python tests/test_neo_jizo_brand_ui.py
