@@ -1,6 +1,6 @@
 # NEO-JIZO-DIRT-EDGE-025
 
-Status: DESIGN / IMPLEMENTATION READY  
+Status: EVALUATION CORE IMPLEMENTED / LOCAL EVIDENCE PENDING  
 Date: 2026-10-08
 
 ## Mission
@@ -166,3 +166,50 @@ If the NEO JIZO signal does not improve or remain stable in recent data, return 
 Keep BaoZ untouched.
 
 No BaoZ setting changes are permitted under this mission.
+
+## Implemented evaluation contract
+
+GitHub-side evaluator:
+
+- `src/neo_jizo_dirt_edge.py`
+- `tests/test_neo_jizo_dirt_edge.py`
+- `.github/workflows/neo-jizo-dirt-edge-025.yml`
+
+Required row fields:
+
+- `race_id`
+- `runner_id`
+- `finish_position`
+- `model_rank`
+- `p_win`
+- `p_top2`
+- `p_top3`
+
+Evaluation/slice fields:
+
+- `race_date`
+- `popularity`
+- `odds`
+- `surface`
+- `organizer`
+
+The evaluator enforces:
+
+- unique `race_id + runner_id`;
+- positive finish position and model rank;
+- probabilities in [0, 1];
+- `p_win <= p_top2 <= p_top3`;
+- popularity/odds positivity when supplied.
+
+Outputs include:
+
+- base and selected win/top2/top3 rates;
+- average predicted probabilities;
+- calibration gaps for all three targets;
+- Brier scores for all three targets;
+- market-relative lift for all three targets;
+- win odds-ratio vs non-selected runners;
+- yearly splits;
+- organizer splits.
+
+The first local evidence step must provide only the minimum sanitized prediction/result rows needed by this contract. No MDB or PostgreSQL dump is required.
