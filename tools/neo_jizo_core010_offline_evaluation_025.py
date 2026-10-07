@@ -533,8 +533,14 @@ def evaluate_csv(csv_path: Path, provenance_info: dict[str, Any], windows: list[
         invalid_by_split.get(part, 0) for part in ("TEST", "OOS")
     )
     status = ("HOLDOUT_CONTRACT_MATCHED" if provenance_info["verified"] else "DIAGNOSTIC_ONLY")
+    unlabelled_count = label_issues_by_kind.get("ALL_THREE_LABELS_BLANK", 0)
+    nonblank_invalid_count = invalid_count - unlabelled_count
     if invalid_count:
-        status = "PARTIAL_INVALID_ROWS"
+        status = (
+            "PARTIAL_UNLABELLED_OUTCOMES"
+            if nonblank_invalid_count == 0
+            else "PARTIAL_INVALID_ROWS"
+        )
     if not any(item["base"]["n"] and item["split"] == "OOS" for item in report):
         status = "BLOCKED_NO_OOS"
 
@@ -606,6 +612,14 @@ def evaluate_csv(csv_path: Path, provenance_info: dict[str, Any], windows: list[
             if row_counts.get(split, 0) or invalid_by_split.get(split, 0)
         },
         "invalid_rows_total": invalid_count,
+        "unlabelled_outcome_rows": unlabelled_count,
+        "other_invalid_rows": nonblank_invalid_count,
+        "outcome_status_known": False,
+        "missing_outcome_policy": (
+            "Do not impute zeros or winners. Quarantine unlabelled rows, "
+            "retain source files unchanged; audit source result status before "
+            "classifying causes. Clean-race figures are sensitivity only."
+        ),
         "valid_rows_total": sum(row_counts.values()),
         "valid_row_fraction": (
             sum(row_counts.values()) / total_rows if total_rows else None
@@ -665,6 +679,11 @@ def main() -> int:
     for reason, count in result["invalid_row_reasons"].items():
         print(f"  {reason}: {count}")
     print(f"Invalid rows by split: {result['invalid_rows_by_split']}")
+    print(
+        f"Completely unlabelled: {result['unlabelled_outcome_rows']}, "
+        f"other invalid: {result['other_invalid_rows']}"
+    )
+    print("Unlabelled results are quarantined; NOT assigned loss=0 or win=0.")
     print("--- LABEL ISSUE SUBTYPES (NO ROW DATA) ---")
     for kind, count in result["label_issues_by_kind"].items():
         print(f"  {kind}: {count}")
