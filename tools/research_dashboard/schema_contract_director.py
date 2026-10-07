@@ -14,7 +14,10 @@ def writej(p,o):
 def run_once():
  checks=[];blocked=False
  for path in FILES:
-  if not path.exists():checks.append({'file':path.name,'status':'MISSING'});continue
+  if not path.exists():
+   blocked=True
+   checks.append({'file':path.name,'status':'MISSING','reason':'required_artifact_not_found'})
+   continue
   cols=list(pd.read_csv(path,nrows=0).columns);req=REQUIRED.get(path.name,set());missing=sorted(req-set(cols));dup=[c for c in cols if cols.count(c)>1];sig=hashlib.sha256('|'.join(cols).encode()).hexdigest()[:16]
   status='BLOCKED' if missing or dup else 'PASS';blocked|=status=='BLOCKED';checks.append({'file':path.name,'status':status,'columns':len(cols),'schema_hash':sig,'missing_required':missing,'duplicate_columns':sorted(set(dup))})
  out={'updated':now(),'status':'BLOCKED' if blocked else 'PASS','checks':checks};writej(REPORT,out);writej(STATE,{'pid':os.getpid(),'updated':now(),'status':out['status'],'detail':'schema contract audit','report':str(REPORT)});return out
