@@ -1,7 +1,7 @@
 # BAOZ-BASELINE-001 — 馬王Z 標準状態ベースライン
 
 更新日: 2026-10-08
-Status: IMPLEMENTATION READY / LOCAL EVIDENCE PENDING
+Status: BASELINE MEASUREMENT ACTIVE / GUI MARK MAPPING PENDING
 
 ## Goal
 
@@ -96,6 +96,20 @@ GitHubには馬王ZのMDB原本を置かない。
 - 堅い / 荒れる
 - 馬王◎が飛んだレース
 - ▲△の人気薄激走
+
+## Frozen evaluation boundary
+
+Evidence now fixes the ranked evaluation boundary as follows:
+
+- Primary ranked-history start: `2012-01-01`
+- Current cutoff: `2026-10-08`
+- Records before 2012 are excluded from rank-baseline conclusions because all six rank definitions first produce rank=1 on 2012-01-01.
+- Future/unresolved race-card rows are excluded.
+- Valid-result filters must exclude sentinel dates and zero/default finish values.
+- `馬券評価順位` is the current canonical value-oriented rank for analysis because it is 99.91% rank-identical to `得点V3順位`; the disagreement set remains available for separate research.
+- GUI ◎/○/▲/△ mapping is not yet assumed.
+
+The baseline remains frozen: no BaoZ setting changes are allowed while this Mission is active.
 
 ## Leakage guard
 
