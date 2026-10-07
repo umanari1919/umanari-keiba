@@ -8,6 +8,7 @@ on:
       - "tests/test_neo_jizo_dirt_edge.py"
       - "tests/test_neo_jizo_dirt_edge_adapter.py"
       - "tools/neo_jizo_dirt_edge_context_discovery_025.py"
+      - "tools/run_neo_jizo_dirt_edge_context_discovery_025.ps1"
       - "docs/NEO_JIZO_DIRT_EDGE_025.md"
       - "NEXT_MISSION.md"
       - ".github/workflows/neo-jizo-dirt-edge-025.yml"
@@ -37,6 +38,16 @@ jobs:
           python-version: ${{ matrix.python-version }}
       - name: Compile
         run: python -m py_compile src/neo_jizo_dirt_edge.py src/neo_jizo_dirt_edge_adapter.py tools/neo_jizo_dirt_edge_context_discovery_025.py
+      - name: Parse PowerShell launcher
+        shell: pwsh
+        run: |
+          $errors = $null
+          [void][System.Management.Automation.Language.Parser]::ParseFile(
+            (Resolve-Path "tools/run_neo_jizo_dirt_edge_context_discovery_025.ps1"),
+            [ref]$null,
+            [ref]$errors
+          )
+          if ($errors.Count -gt 0) { $errors | ForEach-Object { Write-Error $_ }; exit 1 }
       - name: Install pytest
         run: python -m pip install pytest==9.1.0
       - name: Test NEO JIZO dirt edge contract
