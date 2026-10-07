@@ -213,3 +213,47 @@ Outputs include:
 - organizer splits.
 
 The first local evidence step must provide only the minimum sanitized prediction/result rows needed by this contract. No MDB or PostgreSQL dump is required.
+
+## Existing-pipeline adapter
+
+The mission reuses the existing calibrated three-target output:
+
+- `CORE/data/CORE-010_calibrated_probabilities.csv`
+
+Adapter:
+
+- `src/neo_jizo_dirt_edge_adapter.py`
+
+Prediction-side columns consumed:
+
+- `race_id`
+- `race_horse_id`
+- `race_date`
+- `p_win_cal`
+- `p_top2_cal`
+- `p_top3_cal`
+
+Evaluation-context columns are supplied separately:
+
+- `race_id`
+- `race_horse_id`
+- `finish_position`
+- `popularity`
+- `odds`
+- `surface`
+- `organizer`
+
+### Leakage boundary
+
+The adapter freezes `model_rank` from `p_win_cal` **before** joining evaluation context.
+
+Therefore:
+
+- popularity cannot influence model rank;
+- odds cannot influence model rank;
+- finish position cannot influence model rank;
+- legacy label columns present in retrospective probability files are ignored by the adapter.
+
+The context join is one-to-one and fails closed on duplicate or missing keys.
+
+This mission does not require generating a new model before the first benchmark.
