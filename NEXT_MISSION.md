@@ -3,7 +3,7 @@
 Mission ID: `NEO-JIZO-DIRT-EDGE-025`
 更新日: 2026-10-08
 Priority: P0
-Status: DESIGN / IMPLEMENTATION READY
+Status: EVALUATION CORE IMPLEMENTED / LOCAL EVIDENCE PENDING
 
 ## Goal
 
@@ -106,3 +106,23 @@ features improve recent P7-9 dirt discrimination relative to:
 
 If recent lift does not improve, report FAIL/PARTIAL rather than tuning until it does.
 
+
+## Current implementation state
+
+Completed on GitHub:
+
+- independent three-target evaluation core;
+- duplicate runner guard;
+- monotonic probability guard;
+- calibration/Brier metrics;
+- market-relative lift;
+- selection odds-ratio;
+- year and organizer aggregation;
+- Windows/Linux x Python 3.13/3.14 CI contract.
+
+Next local dependency:
+
+Produce a read-only, time-safe NEO JIZO prediction/result extract matching
+`docs/NEO_JIZO_DIRT_EDGE_025.md`.
+
+Do not run a new BaoZ probe for this step.
