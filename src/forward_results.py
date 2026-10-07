@@ -97,8 +97,10 @@ def normalize(raw_rows: object, race_ids: list[str]) -> list[dict]:
         seen.add(key)
         abnormal = raw["abnormal_code"]
         finish = raw["finish_position"]
-        if not isinstance(abnormal, str) or not isinstance(finish, (str, type(None))):
+        if not isinstance(abnormal, (str, type(None))) or not isinstance(finish, (str, type(None))):
             raise ValueError("Malformed DB result status types")
+        # SQL NULL means unresolved; it must not become a zero/losing label.
+        abnormal = (abnormal or "").strip()
         finish = (finish or "").strip()
         # 0=normal, 4=競走中止; 1/2/3=出走取消・除外等
         # Unknown codes/empty ranks remain unresolved rather than becoming 0.
