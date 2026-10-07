@@ -156,9 +156,12 @@ def parse(row: dict[str, str]) -> tuple[date, str, str, str, tuple[int, int, int
     scope = {"1": "JRA", "2": "NAR"}.get(_value(row, "race_scope_cd"))
     if not scope:
         raise ValueError("invalid race_scope_cd")
-    labels = tuple(int(_value(row, f"label_{t}")) for t in TARGETS)
-    if any(x not in (0, 1) for x in labels) or not labels[0] <= labels[1] <= labels[2]:
+    raw_labels = tuple(float(_value(row, f"label_{t}")) for t in TARGETS)
+    if any(not math.isfinite(x) or x not in (0.0, 1.0) for x in raw_labels):
         raise ValueError("invalid target labels")
+    labels = tuple(int(x) for x in raw_labels)
+    if not labels[0] <= labels[1] <= labels[2]:
+        raise ValueError("inconsistent outcome labels")
     probs = tuple(float(_value(row, f"p_{t}_cal")) for t in TARGETS)
     if not all(math.isfinite(x) and 0 <= x <= 1 for x in probs):
         raise ValueError("invalid probability")
@@ -222,10 +225,11 @@ def evaluate_csv(csv_path: Path, provenance_info: dict[str, Any], windows: list[
                     aggregate[dimensions].add(labels, probs)
                 rkey = (part, race)
                 current = leaders.get(rkey)
-                if current is None or (probs[0], -len(horse), horse) > (current[0], -len(current[1]), current[1]):
-                    # Tie-break deterministic by runner-id; output remains aggregates.
-                    if current is None or probs[0] > current[0] or (probs[0] == current[0] and horse < current[1]):
-                        leaders[rkey] = (probs[0], horse, year, scope, labels, probs)
+                # Tie-break deterministic by runner ID, never by popularity/outcome.
+                if current is None or probs[0] > current[0] or (
+                    probs[0] == current[0] and horse < current[1]
+                ):
+                    leaders[rkey] = (probs[0], horse, year, scope, labels, probs)
 
     for (part, _race), candidate in leaders.items():
         _, _, year, scope, labels, probs = candidate
