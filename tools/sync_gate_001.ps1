@@ -250,7 +250,7 @@ function Write-SyncReport {
         [Parameter(Mandatory)][string]$Path,
         [Parameter(Mandatory)][string]$Remote,
         [Parameter(Mandatory)][string]$Branch,
-        [Parameter(Mandatory)][string]$Destination
+        [AllowEmptyString()][string]$Destination = ''
     )
 
     $relation = Get-GitRelation -Path $Path -Remote $Remote -Branch $Branch
@@ -389,6 +389,14 @@ function Invoke-SelfTest {
         }
         $rSame = Get-GitRelation -Path $same -Remote $canonical -Branch 'main'
         if ($rSame.Relation -ne 'same') { throw "Expected same, got $($rSame.Relation)" }
+
+        $report = Write-SyncReport -Path $same -Remote $canonical -Branch 'main' -Destination ''
+        if (-not (Test-Path -LiteralPath $report.JsonPath -PathType Leaf)) {
+            throw 'Expected JSON report for empty Destination.'
+        }
+        if (-not (Test-Path -LiteralPath $report.MarkdownPath -PathType Leaf)) {
+            throw 'Expected Markdown report for empty Destination.'
+        }
 
         $ahead = Join-Path $root 'ahead'
         & git clone -q $canonical $ahead
