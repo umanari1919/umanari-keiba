@@ -607,6 +607,81 @@ Positive offsets include 高知, 名古屋, 京都, 函館.
 - Next diagnostic target: resolve track-type semantics and decompose the intersection `P7-9 x track_type=1` by organizer, venue and year.
 - Continue prediction-quality diagnosis only; do not convert these findings into a wagering rule.
 
+## BAOZ-PROBE-012 local evidence — 2026-10-08
+
+Intersection analysis completed for `馬券評価順位=1 x popularity 7-9 x track_type=1`.
+
+### Structure
+
+Organizer x track-type counts in ranked history:
+
+- organizer 1 / type 0: 24,541
+- organizer 1 / type 1: 24,476
+- organizer 1 / type 2: 1,776
+- organizer 2 / type 0: 818
+- organizer 2 / type 1: 192,407
+
+This structure strongly suggests type 1 is the dominant surface for organizer 2 and one of two major surfaces for organizer 1, but BaoZ-local semantics are not yet canonically labeled.
+
+### 2019-2023 vs 2024-2026
+
+Organizer 2:
+- n 2,467 -> 1,549
+- win 4% -> 3%
+- top3 20% -> 17%
+- expected after wins at old rate: 67.81
+- observed: 45
+- deficit: -22.81
+
+Organizer 1:
+- n 1,016 -> 549
+- win 5% -> 3%
+- top3 20% -> 14%
+- expected after wins at old rate: 27.02
+- observed: 17
+- deficit: -10.02
+
+Combined deficit in this intersection is -32.83 wins, about 79% of the total P7+ deficit (-41.37).
+
+### Venue concentration
+
+Largest negative contributions include:
+
+- 園田: -5.48
+- 川崎: -5.38
+- 小倉: -4.98
+- 佐賀: -4.14
+- 京都: -3.29
+- 水沢: -2.95
+- 中山: -2.60
+- 笠松: -2.48
+- 門別: -2.21
+
+Positive offsets include 高知, 浦和, 名古屋, 東京, 京都-independent? (venue-level variation remains mixed).
+
+### Yearly behavior
+
+The intersection is historically around 4-6% win rate through most of 2012-2023, with:
+- 2019: 5%
+- 2020: 5%
+- 2021: 3%
+- 2022: 6%
+- 2023: 5%
+
+Then:
+- 2024: 3%
+- 2025: 3%
+- 2026: 3%
+
+Top3 also declines from roughly 19-22% in stronger years to 15-17% in 2024-2026.
+
+### Interpretation
+
+- The longshot degradation is highly concentrated in `P7-9 x track_type=1`.
+- Both organizers degrade in the same direction.
+- This looks like a cross-organizer regime shift rather than a single venue failure.
+- Next step: map BaoZ `トラック種別コード` to raw `トラックコード` locally, then split the intersection by organizer x year with the resolved surface semantics.
+
 ## Current model/research state
 
 - NEO JIZO baseline: `jockey-25`
