@@ -195,6 +195,10 @@ def main():
     if not frozen.exists():
         with frozen.open('xb') as handle:
             handle.write(p.encoded(result))
+    if result['predictions']:
+        # A forecast must receive its local freeze receipt BEFORE latest.json can publish it.
+        import forward_blind
+        forward_blind.freeze_run(frozen)
     (OUT / 'latest.json').write_bytes(p.encoded(result))
     print(result['state'], result['predicted_races'], result['predicted_runners'])
 
