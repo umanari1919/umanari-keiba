@@ -595,7 +595,7 @@ def evaluate_csv(csv_path: Path, provenance_info: dict[str, Any], windows: list[
             split: {
                 "valid_rows": row_counts.get(split, 0),
                 "invalid_rows": invalid_by_split.get(split, 0),
-                "labeled_coverage": (
+                "usable_row_coverage": (
                     row_counts.get(split, 0)
                     / (row_counts.get(split, 0) + invalid_by_split.get(split, 0))
                     if row_counts.get(split, 0) + invalid_by_split.get(split, 0)
@@ -670,12 +670,13 @@ def main() -> int:
         print(f"  {kind}: {count}")
     print(f"Label issues by scope: {result['label_issues_by_scope']}")
     print(f"Label issues by split: {result['label_issues_by_split']}")
+    print(f"Label issues by year: {result['label_issues_by_year']}")
     print("--- LABEL COVERAGE ---")
     for split, item in result["split_label_coverage"].items():
-        coverage = item["labeled_coverage"]
+        coverage = item["usable_row_coverage"]
         print(
-            f"  {split}: labeled={item['valid_rows']} invalid={item['invalid_rows']} "
-            f"coverage={coverage:.3%}" if coverage is not None
+            f"  {split}: usable={item['valid_rows']} invalid={item['invalid_rows']} "
+            f"usableRate={coverage:.3%}" if coverage is not None
             else f"  {split}: NO ROWS"
         )
     print(f"Affected races by split: {result['invalid_affected_races_by_split']}")
