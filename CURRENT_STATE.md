@@ -1318,3 +1318,48 @@ The next engineering/research mission is `NEO-JIZO-DIRT-EDGE-025`.
 - Work only when local PC / WSL / PostgreSQL / BaoZ files are indispensable.
 - One Work should serve one bounded Mission.
 - Large local data and licensed/private artifacts never move to GitHub.
+
+## NEO-JIZO-DIRT-EDGE-025 implementation state — 2026-10-08
+
+GitHub implementation is active on branch `research/neo-jizo-dirt-edge-025` / Draft PR #54.
+
+Implemented:
+
+- `src/neo_jizo_dirt_edge.py`
+  - separate win / top2 / top3 evaluation
+  - Brier scores and calibration gaps
+  - Wilson 95% confidence intervals
+  - market-relative lift
+  - selection win odds-ratio and 95% CI
+  - yearly and organizer splits
+  - duplicate race+runner rejection
+  - probability monotonicity gate
+
+- `src/neo_jizo_dirt_edge_adapter.py`
+  - consumes existing calibrated probability output
+  - freezes model rank from p_win before market/result join
+  - one-to-one prediction/context join
+  - ignores retrospective label columns for ranking
+  - popularity/odds cannot influence model rank
+
+- `tools/neo_jizo_dirt_edge_context_discovery_025.py`
+  - PostgreSQL read-only metadata/aggregate discovery
+  - auto-discovers probability artifact
+  - inventories candidate popularity/odds/finish/track columns
+  - emits no horse-level rows
+
+- `tools/run_neo_jizo_dirt_edge_context_discovery_025.ps1`
+  - one-line launcher for the local discovery step
+
+CI:
+
+- NEO JIZO evaluator/adapter contract
+- restored training core compatibility
+- modern stack quality
+- Windows/Linux x Python 3.13/3.14
+- PowerShell launcher syntax parsing
+
+Local dependency remaining:
+
+Run the read-only market-context discovery once. The result determines the exact PostgreSQL source for popularity and win odds. Do not write model code or tune weights until this mapping is resolved.
+
