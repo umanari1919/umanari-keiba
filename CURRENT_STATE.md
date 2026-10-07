@@ -1485,3 +1485,49 @@ Next local execution is **one repeat of the DB-free CORE-010 evaluation**
 using the improved pinned runner after CI, not PostgreSQL recovery.
 
 Results remain **PARTIAL** and not direct evidence of superiority over BaoZ.
+
+
+
+## NEO JIZO 025 second local CORE-010 quality audit — 2026-10-08
+
+The user ran the improved DB-free offline evaluator over 805,095 CORE-010 rows.
+
+Quality:
+- **PARTIAL_INVALID_ROWS**; provenance metadata **HOLDOUT_CONTRACT_MATCHED**.
+- 8,573 invalid rows (1.065% of input).
+- All 8,573 were categorized by the current detector as **INVALID_OR_MISSING_OUTCOME_LABELS**. THIS CATEGORY DID NOT distinguish blank, nonnumeric, out-of-range, or contradictory labels; it does not prove that the source records are corrupt or that the outcomes are simply pending.
+- Invalid by temporal split: TRAIN 3,930; VALIDATION 1,144; SELECTION 971; TEST 992; OOS 1,536.
+- Known affected invalid TEST+OOS rows: 2,528.
+- Total distinct race IDs associated with invalid rows across all splits: 7,085.
+- Unknown-date invalid rows: zero.
+
+Sensitivity with ALL races that contain a detected invalid row removed:
+
+| Target, top1 | TEST | OOS |
+|---|---:|---:|
+| Win | 31.6744% (6,892 top1) | 29.5216% (6,375 top1) |
+| Top2 | 49.2890% | 48.9725% |
+| Top3 | 61.1434% | 60.9569% |
+
+These are close to the original valid-row-only figures, but neither method proves missingness is random or that all race runners appear in the CSV.
+
+JRA/NAR composition normalization (valid-row-only, ALL_SURFACES):
+- TEST top1 NAR share 41.64%; OOS top1 NAR share 30.15%.
+- OOS win at TEST organizer mix 31.359%, raw 29.747%, TEST 31.836%.
+- OOS top2 at TEST mix 50.464%, TEST 49.409%.
+- OOS top3 at TEST mix 62.237%, TEST 61.309%.
+
+This demonstrates a strong *descriptive* organizer-mix confounder. It is NOT a causal proof nor significance test. The outcomes cannot yet be compared directly with the frozen BaoZ P7-9 dirt benchmark.
+
+### Next data quality classification gate
+
+An updated evaluator now independently counts:
+- ALL_THREE_LABELS_BLANK / ONE_LABEL_BLANK / TWO_LABELS_BLANK,
+- NON_NUMERIC_LABEL / NON_BINARY_OR_NONFINITE_LABEL / NONMONOTONIC_TARGET_LABELS,
+- each kind by TRAIN/VALIDATION/SELECTION/TEST/OOS, year and JRA/NAR,
+- split-specific usable scored-row coverage and affected race counts,
+- original and clean-race sensitivity figures.
+
+This new schema has synthetic tests in CI. No source CSV rewrites, DB connections, service actions, runner details or horse-level exports.
+
+The next local action, ONLY after all CI gates pass, is one DB-free evaluation with the pinned classification-enabled Python script.
