@@ -1389,3 +1389,33 @@ It only inspects:
 - whether the existing CORE-010 CSV is present (header only).
 
 If cluster files are present but no socket is listening, treat PostgreSQL as offline / unreachable, and keep NEO JIZO evaluation code ready rather than changing storage or attempting a destructive DB restoration.
+
+
+## NEO JIZO CORE-010 offline continuation — 2026-10-08
+
+The PostgreSQL filesystem audit confirmed that the WSL PG18 executable and pgdata18 are present but the DB service is offline/unreachable, with no 5433 socket or process. The ~51.97 GiB Ubuntu VHDX and ~167.56 MiB CORE-010 CSV are present. Cluster integrity is not yet proven.
+
+Decision:
+- no automatic service startup, shutdown, restart, DB initialization or migration;
+- no repeat TCP/WSL connection probes at this stage;
+- continue NEO JIZO evaluation from the existing CORE-010 CSV alone.
+
+Implemented on research/neo-jizo-dirt-edge-025:
+
+- tools/neo_jizo_core010_offline_evaluation_025.py
+- tools/run_neo_jizo_core010_offline_evaluation_025.ps1
+- tests/test_neo_jizo_core010_offline_evaluation_025.py
+- CI compile, PowerShell syntax, and offline evaluation tests
+
+The evaluator:
+
+- streams local CORE-010 predictions and labels without copying row-level data;
+- computes win/top2/top3 rates, average calibrated probabilities, Brier, calibration gap;
+- freezes top1 model selection by calibrated p_win, then raw p_win for isotonic ties, then runner ID;
+- reports TEST/OOS, year, JRA/NAR aggregates and model-top1 lift vs all runners in the same aggregate;
+- requires matching temporal split plan and CORE-005/CORE-010 decision split IDs for HOLDOUT_CONTRACT_MATCHED status;
+- otherwise labels results DIAGNOSTIC_ONLY/PARTIAL, not certified OOS.
+
+Until verified dirt/popularity/odds context is available, all results are **ALL_SURFACES**, not comparable to BaoZ P7-9 dirt baseline.
+
+The only next local step is the DB-free one-line CORE-010 offline evaluation runner. The local output has not yet been executed or validated against the user's actual CSV.
