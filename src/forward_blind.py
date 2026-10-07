@@ -71,7 +71,8 @@ def ensure_predictions(run, source, sealed_at):
     generated = jst_time(run["created_at"])
     if not captured <= generated <= sealed_at:
         raise ValueError("Capture, computation and seal timestamps are inconsistent")
-    if (sealed_at - captured).total_seconds() > 120:
+    # Allow bounded computation time but require prompt sealing after output.
+    if (generated - captured).total_seconds() > 600 or (sealed_at - generated).total_seconds() > 120:
         raise ValueError("Historical or stale runs cannot be retroactively sealed")
     if (run.get("state") != "personal_predictions_saved" or
             run.get("model") != "jockey_25" or
