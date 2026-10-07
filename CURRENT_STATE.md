@@ -1,123 +1,84 @@
 # CURRENT STATE — NEO JIZO KEIBA / THE JOCKEY
 
-更新日: 2026-10-07
+更新日: 2026-10-08
 
 ## Canonical
 
 - Repository: `umanari1919/umanari-keiba`
 - Default branch: `main`
-- Current restored main: `a8f27b4e54daedca88788e7459fd2d7e6e87dd08`
+- Current main observed before BAOZ branch: `f127eb71b79a6324800663c6e4744d16d7ab880b`
 - GitHub is the canonical code/spec/history store.
 
-## Local rescue result
+## Local rescue / restoration
 
-Local workspace:
+The previous source rescue is complete. Do not restart it.
 
-`C:\Users\uchih\Documents\Codex\2026-10-06\new-chat\neo-jizo-keiba`
+Restored lines include:
 
-SYNC-GATE-001 established:
-
-- Git repository exists.
-- Relation: `unborn`
-- Local HEAD: `(unborn)`
-- tracked changes: 0
-- untracked files: 272
-
-The rescue importer then preserved the safe code/document subset:
-
-- Included: 248
-- Conflicts preserved separately: 3
-- Excluded: 2016 scanned items
-- Secret-risk detections: 0
-- Included size: 3.01 MB
-- Rescue commit: `0986a471ca0220259d0cdb1c7626830875186625`
-- Preservation branch: `umanari1919-zeus/keiba-ai:rescue/neo-jizo-local-20261007-140123`
-
-The original local workspace was not modified by the rescue.
-
-## Restored to canonical main
-
-### PR #47 — jockey-25 / three targets / 48 workout candidates
-
-Merged to main as:
-
-`9b42572e085cc31ad720fa7ae152c8b3fdef1399`
-
-Restored:
-
-- frozen `jockey-25` score replay
-- win / top-2 / top-3 probability evaluation
-- 48 chronological workout candidates
-- locked 2026 OOS evaluation
-- diagnostic / finalization / publication helpers
-- dependency closure
-
-CI:
-
-- Windows / Linux
-- Python 3.13 / 3.14
-- compile PASS
-- 48 configs PASS
-- Plackett-Luce target masses 1 / 2 / 3 PASS
-- existing quality gates PASS
-
-Important: restoration is not production promotion. The restored research code keeps production approval false.
-
-### PR #48 — weekend personal forecast chain
-
-Merged to main as:
-
-`a8f27b4e54daedca88788e7459fd2d7e6e87dd08`
-
-Restored:
-
-- weekend source status
-- prospective capture / readiness
-- history refresh / history cache
-- sealed jockey-25 forecast
-- same-day pre-start personal forecast
-- weekend orchestration
+- jockey-25 baseline
+- win / top-2 / top-3 evaluation
+- 48 workout candidates
+- weekend personal forecast chain
 - local UI publication
-- offline checks and unit tests
-- `web/index.html`
-- `jwk.cmd`
+- weekend reality diagnostics
 
-CI:
+## WEEKEND-REALITY-GATE-001 latest local evidence
 
-- Windows / Linux
-- Python 3.13 / 3.14
-- personal forecast tests PASS
-- source/timing/orchestration/UI checks PASS
-- restored training-core CI PASS
-- existing quality gates PASS
+Founder-provided local execution on 2026-10-07 reported:
+
+- Weekend source: `UNAVAILABLE`
+- Confirmed runners: unavailable
+- Special registrations: kept separate
+- 2026-10-03 / 2026-10-04 replay: `replay_completed`
+- Replay races: 48
+- Replay runners: 711
+- Personal forecast: `UNAVAILABLE`
+- weekend-source-status: exit 1
+- historical-replay-20261003-04: exit 0
+- DB read-only field in the report: `False`
+
+Interpretation:
+
+- Historical replay path is proven for the 48-race / 711-runner sample.
+- Upcoming live-source readiness is not proven.
+- Personal forecast output is not available while the weekend source is unavailable.
+- Do not rerun the expensive historical replay solely to reproduce the same evidence.
+
+Mission status: `PARTIAL — LIVE SOURCE UNAVAILABLE`
+
+PR #52 added failure classification and `-DiagnoseLatest` so source/runtime failures can be diagnosed without rerunning the heavy replay.
+
+## Founder priority change — BaoZ / JV-Link / UmaConn
+
+The founder completed the initial BaoZ setup and chose a new research stage.
+
+New research mission:
+
+`BAOZ-BASELINE-001`
+
+Principles:
+
+- BaoZ initial settings are the frozen control group.
+- Do not customize BaoZ before baseline measurement.
+- Prediction quality and betting ROI are separate.
+- BaoZ is private benchmark/research only.
+- JV-Link / UmaConn are primary acquisition routes for independent NEO JIZO research.
+- BaoZ MDB originals, service keys, and PostgreSQL DB remain local only.
+- GitHub stores research code, contracts, tests, and aggregate evidence.
 
 ## Current model/research state
 
-- Baseline: `jockey-25`
+- NEO JIZO baseline: `jockey-25`
 - Three targets: win / top-2 / top-3
-- Workout search: 48 candidates
-- Previously selected workout candidate: `wood-14-1f-25`
-- Workout candidate research status: KEEP
-- Production status: REJECT / not promoted
-- Personal weekend output intentionally saves jockey-25 probabilities only.
-- Automatic wagering: disabled.
+- Workout research: 48 candidates
+- Production promotion: not approved
+- Automatic wagering: disabled
+- BaoZ customization: not started
+- BaoZ baseline evidence: pending local read-only extraction
 
-## Important correction
+## Operating rule
 
-The earlier SYNC-GATE keyword count of 1 was a serialization artifact
-(`System.Collections.Hashtable`) and is not model evidence.
-
-## What is no longer required
-
-- No more ZIP handoff.
-- No more manual copying of rescued source files.
-- No need to repeat RESCUE-MANIFEST-001 or RESCUE-IMPORT-001.
-- Do not restart local/GitHub rescue from scratch.
-
-## Remaining gap
-
-GitHub now contains the restored code, but real execution still depends on the local
-PostgreSQL/history/model artifacts and current race-card availability.
-
-The next mission is therefore runtime reality verification, not more source rescue.
-See `NEXT_MISSION.md`.
+- GitHub first for specifications, code, tests, and history.
+- Work only when local PC / WSL / PostgreSQL / BaoZ files are indispensable.
+- One Work should serve one bounded Mission.
+- Large local data and licensed/private artifacts never move to GitHub.
