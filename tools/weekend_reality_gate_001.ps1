@@ -2,7 +2,8 @@
 [CmdletBinding()]
 param(
     [string]$RepoPath = '',
-    [switch]$SelfTest
+    [switch]$SelfTest,
+    [switch]$DiagnoseLatest
 )
 
 Set-StrictMode -Version Latest
@@ -188,6 +189,39 @@ function New-GateSummary {
     }
 }
 
+
+function Show-LatestFailureDiagnostics {
+    $tempRoot = Join-Path ([IO.Path]::GetTempPath()) 'neo-jizo-weekend-reality'
+    $latest = Get-ChildItem -LiteralPath $tempRoot -Filter 'WEEKEND-REALITY-GATE-001-*.json' -File -ErrorAction SilentlyContinue |
+        Sort-Object LastWriteTime -Descending |
+        Select-Object -First 1
+    if (-not $latest) {
+        throw 'No previous WEEKEND-REALITY-GATE-001 JSON report was found.'
+    }
+
+    $report = Get-Content -LiteralPath $latest.FullName -Raw -Encoding utf8 | ConvertFrom-Json
+    Write-Host ''
+    Write-Host '============================================================' -ForegroundColor Cyan
+    Write-Host ' WEEKEND-REALITY-GATE-001 FAILURE DIAGNOSTICS' -ForegroundColor Cyan
+    Write-Host '============================================================' -ForegroundColor Cyan
+    Write-Host "Report : $($latest.FullName)"
+    Write-Host ''
+    $failed = @($report.steps | Where-Object { [int]$_.exit_code -ne 0 })
+    if (-not $failed.Count) {
+        Write-Host 'No failed steps in the latest report.' -ForegroundColor Green
+        return
+    }
+    foreach ($step in $failed) {
+        $tail = @($step.output_tail | ForEach-Object { "$_" })
+        $class = Get-FailureClass -Lines $tail
+        Write-Host ("{0}: [{1}]" -f $step.name, $class) -ForegroundColor Yellow
+        foreach ($line in @($tail | Select-Object -Last 8)) {
+            Write-Host ("  " + $line)
+        }
+        Write-Host ''
+    }
+}
+
 function Invoke-SelfTest {
     $steps = @(
         [pscustomobject]@{ Name='source'; ExitCode=1; Output=@('psql: error: connection to server at "127.0.0.1", port 5433 failed: Connection refused') },
@@ -218,6 +252,11 @@ function Invoke-SelfTest {
 
 if ($SelfTest) {
     Invoke-SelfTest
+    exit 0
+}
+
+if ($DiagnoseLatest) {
+    Show-LatestFailureDiagnostics
     exit 0
 }
 
