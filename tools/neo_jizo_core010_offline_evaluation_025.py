@@ -205,6 +205,8 @@ def _invalid_reason(exc: Exception) -> str:
         return "INVALID_OR_MISSING_SCOPE"
     if "label_win" in detail or "label_top2" in detail or "label_top3" in detail:
         return "INVALID_OR_MISSING_OUTCOME_LABELS"
+    if "invalid raw win score" in detail:
+        return "INVALID_RAW_WIN_SCORE"
     if "p_win" in detail or "p_top2" in detail or "p_top3" in detail:
         return "INVALID_OR_NONMONOTONIC_PROBABILITIES"
     if "inconsistent outcome labels" in detail:
