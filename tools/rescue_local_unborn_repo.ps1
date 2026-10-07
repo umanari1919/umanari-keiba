@@ -73,6 +73,45 @@ function Test-AllowedFile {
     return ($File.Extension.ToLowerInvariant() -in $allowed)
 }
 
+function Get-FileSizeLimitBytes {
+    param([IO.FileInfo]$File, [string]$RelativePath)
+
+    if ($RelativePath -eq 'uv.lock') { return 5MB }
+
+    switch ($File.Extension.ToLowerInvariant()) {
+        '.json' { return 512KB }
+        '.cmd'  { return 256KB }
+        '.bat'  { return 256KB }
+        '.html' { return 2MB }
+        '.css'  { return 2MB }
+        '.js'   { return 2MB }
+        '.ts'   { return 2MB }
+        '.tsx'  { return 2MB }
+        '.jsx'  { return 2MB }
+        '.py'   { return 2MB }
+        '.ps1'  { return 2MB }
+        '.psm1' { return 2MB }
+        '.sql'  { return 2MB }
+        '.toml' { return 1MB }
+        '.yml'  { return 1MB }
+        '.yaml' { return 1MB }
+        '.md'   { return 2MB }
+        '.txt'  { return 2MB }
+        default { return 1MB }
+    }
+}
+
+function Get-RescuePriority {
+    param([string]$RelativePath, [IO.FileInfo]$File)
+
+    if ($RelativePath -match '^(src|tests)/') { return 0 }
+    if ($RelativePath -in @('.gitignore', '.python-version', 'pyproject.toml', 'README.md', 'AGENTS.md', 'HANDOVER.md', 'HANDOVER_ACTIVE.md', 'uv.lock')) { return 1 }
+    if ($RelativePath -match '^docs/') { return 2 }
+    if ($RelativePath -match '^web/') { return 3 }
+    if ($File.Extension.ToLowerInvariant() -in @('.json', '.cmd', '.bat')) { return 5 }
+    return 4
+}
+
 function Test-SecretRisk {
     param([IO.FileInfo]$File, [string]$RelativePath)
 
@@ -175,7 +214,18 @@ function Invoke-RescueImport {
     }
     Invoke-GitText -Path $work -Arguments @('checkout', '-b', $branch) | Out-Null
 
-    $files = Get-ChildItem -LiteralPath $sourceResolved -File -Recurse -Depth 12 -ErrorAction SilentlyContinue
+    $files = @(
+        Get-ChildItem -LiteralPath $sourceResolved -File -Recurse -Depth 12 -ErrorAction SilentlyContinue |
+            ForEach-Object {
+                $rel0 = Get-RelativeUnixPath -Root $sourceResolved -FullName $_.FullName
+                [pscustomobject]@{
+                    File = $_
+                    RelativePath = $rel0
+                    Priority = Get-RescuePriority -RelativePath $rel0 -File $_
+                }
+            } |
+            Sort-Object Priority, @{ Expression = { $_.File.Length } }, RelativePath
+    )
     $included = [System.Collections.Generic.List[object]]::new()
     $conflicts = [System.Collections.Generic.List[object]]::new()
     $same = [System.Collections.Generic.List[string]]::new()
@@ -183,25 +233,31 @@ function Invoke-RescueImport {
     $secretRisk = [System.Collections.Generic.List[string]]::new()
     [long]$totalBytes = 0
 
-    foreach ($file in $files) {
-        $rel = Get-RelativeUnixPath -Root $sourceResolved -FullName $file.FullName
+    foreach ($item in $files) {
+        $file = $item.File
+        $rel = $item.RelativePath
 
         if (-not (Test-AllowedFile -File $file -RelativePath $rel)) {
-            $excluded.Add([pscustomobject]@{ path = $rel; reason = 'NOT_ALLOWLISTED' })
+            $excluded.Add([pscustomobject]@{ path = $rel; reason = 'NOT_ALLOWLISTED'; bytes = [long]$file.Length })
             continue
         }
-        if ($file.Length -gt 5MB) {
-            $excluded.Add([pscustomobject]@{ path = $rel; reason = 'FILE_TOO_LARGE' })
+
+        $limit = Get-FileSizeLimitBytes -File $file -RelativePath $rel
+        if ($file.Length -gt $limit) {
+            $excluded.Add([pscustomobject]@{ path = $rel; reason = 'FILE_TOO_LARGE_FOR_TYPE'; bytes = [long]$file.Length })
             continue
         }
         if (Test-SecretRisk -File $file -RelativePath $rel) {
             $secretRisk.Add($rel)
-            $excluded.Add([pscustomobject]@{ path = $rel; reason = 'SECRET_RISK' })
+            $excluded.Add([pscustomobject]@{ path = $rel; reason = 'SECRET_RISK'; bytes = [long]$file.Length })
             continue
         }
 
+        if (($totalBytes + $file.Length) -gt 80MB) {
+            $excluded.Add([pscustomobject]@{ path = $rel; reason = 'TOTAL_BUDGET_EXCEEDED'; bytes = [long]$file.Length })
+            continue
+        }
         $totalBytes += $file.Length
-        if ($totalBytes -gt 100MB) { throw 'Safe rescue candidates exceed 100 MB; aborting before commit.' }
 
         $destRel = $rel
         $destPath = Join-Path $work ($destRel -replace '/', [IO.Path]::DirectorySeparatorChar)
@@ -270,6 +326,7 @@ function Invoke-RescueImport {
         Same = @($same).Count
         Excluded = @($excluded).Count
         SecretRisk = @($secretRisk).Count
+        IncludedBytes = $totalBytes
         PushStatus = $pushStatus
         PushError = $pushError
     }
@@ -295,6 +352,7 @@ function Invoke-SelfTest {
         'local' | Set-Content -LiteralPath (Join-Path $source 'README.md') -Encoding utf8
         'echo ok' | Set-Content -LiteralPath (Join-Path $source 'web/start.cmd') -Encoding utf8
         'backup' | Set-Content -LiteralPath (Join-Path $source 'old.bak') -Encoding utf8
+        ('x' * 700KB) | Set-Content -LiteralPath (Join-Path $source 'generated.json') -Encoding utf8
 
         $result = Invoke-RescueImport -Source $source -Remote $canonical -RequestedBranch 'rescue/selftest' -SkipPush
         if ($result.Included -lt 3) { throw 'Expected at least 3 included files.' }
@@ -302,6 +360,7 @@ function Invoke-SelfTest {
         if (-not (Test-Path -LiteralPath (Join-Path $result.WorkPath 'src/new.py'))) { throw 'Missing rescued src/new.py.' }
         if (-not (Test-Path -LiteralPath (Join-Path $result.WorkPath 'rescue_local_conflicts/README.md'))) { throw 'Missing preserved README conflict.' }
         if (Test-Path -LiteralPath (Join-Path $result.WorkPath 'old.bak')) { throw 'Backup file should not be rescued.' }
+        if (Test-Path -LiteralPath (Join-Path $result.WorkPath 'generated.json')) { throw 'Oversized JSON should not be rescued.' }
         if (-not (Test-Path -LiteralPath (Join-Path $result.WorkPath 'rescue_manifest/RESCUE-IMPORT-001.json'))) { throw 'Missing rescue manifest.' }
 
         Write-Host 'RESCUE-IMPORT-001 self-test PASS'
@@ -331,6 +390,7 @@ Write-Host "Conflicts saved: $($result.Conflicts)"
 Write-Host "Same skipped   : $($result.Same)"
 Write-Host "Excluded       : $($result.Excluded)"
 Write-Host "Secret risks   : $($result.SecretRisk)"
+Write-Host "Included MB    : $([math]::Round($result.IncludedBytes / 1MB, 2))"
 Write-Host "Push           : $($result.PushStatus)"
 Write-Host "Temp clone     : $($result.WorkPath)"
 if ($result.PushStatus -eq 'FAILED') {
