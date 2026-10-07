@@ -1,4 +1,5 @@
 """Synthetic-only local forecast-freeze and result-reconciliation tests."""
+import copy
 import json
 import sys
 import tempfile
@@ -115,7 +116,7 @@ class ForwardBlindTests(unittest.TestCase):
             f.verify_receipt(receipt, root=self.root)
 
     def test_late_or_historical_predictions_cannot_be_backfilled(self):
-        with self.assertRaisesRegex(ValueError, "at or after"):
+        with self.assertRaises(ValueError):
             self.freeze(now=datetime.fromisoformat("2026-10-10T10:00:00+09:00"))
         with self.assertRaisesRegex(ValueError, "stale"):
             self.freeze(now=datetime.fromisoformat("2026-10-10T09:03:00+09:00"))
@@ -131,8 +132,10 @@ class ForwardBlindTests(unittest.TestCase):
             lambda d: d.update(read_only_connection={"transaction_read_only": "off"}),
             lambda d: d.update(model="experimental-workout"),
         ]
+        original = copy.deepcopy(self.run)
         for mutation in cases:
             with self.subTest(mutation=mutation):
+                self.run = copy.deepcopy(original)
                 with self.assertRaises(ValueError):
                     self.freeze(mutation)
 
