@@ -956,6 +956,23 @@ The remaining high-value provenance test is cross-version stability:
 
 The console table under `CANDIDATE FEATURE COLUMNS` printed dictionary keys repeatedly because ordered dictionaries were passed directly to `Format-Table`. This is a presentation bug only; the actual period/variation calculations completed successfully.
 
+## BAOZ-PROBE-018 first run — inconclusive due active-DB selection bug
+
+The first cross-version-freeze run discovered two comparable runner databases:
+
+- Backup/2026-10-08/BaoZ.ex.mdb
+  - last write 2026-10-08 01:20:30
+  - size 2,047.97 MB
+- DB/BaoZ.ex.mdb
+  - last write 2026-10-08 01:35:09
+  - size 1,715.66 MB
+
+However, the comparison section was empty because the probe incorrectly selected `DB/BaoZ.mdb` as the active comparison baseline instead of `DB/BaoZ.ex.mdb`.
+
+Status of this run: INCONCLUSIVE, not PASS/FAIL.
+
+The probe has been patched to compare active `BaoZ.ex.mdb` directly against backup `BaoZ.ex.mdb` copies.
+
 ## Current model/research state
 
 - NEO JIZO baseline: `jockey-25`
