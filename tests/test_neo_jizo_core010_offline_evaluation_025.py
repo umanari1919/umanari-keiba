@@ -362,3 +362,26 @@ def test_two_missing_labels_not_misclassified_as_bad_value(tmp_path: Path) -> No
     meta, windows = offline.provenance(root)
     result = offline.evaluate_csv(src, meta, windows)
     assert result["label_issues_by_kind"] == {"TWO_LABELS_BLANK": 1}
+
+
+
+def test_only_all_three_blank_outcomes_are_quarantined_not_corruption(tmp_path: Path) -> None:
+    root = make_root(tmp_path)
+    unlabelled = row("R_BLANK", "HB", "2024-04-02", 0, 0, 0, .20, .40, .60)
+    for key in ("label_win", "label_top2", "label_top3"):
+        unlabelled[key] = ""
+    known = row("R_KNOWN", "HK", "2024-04-03", 1, 1, 1, .30, .50, .70)
+    csv_file = put_rows(root, [known, unlabelled])
+    original = csv_file.read_bytes()
+
+    meta, windows = offline.provenance(root)
+    report = offline.evaluate_csv(csv_file, meta, windows)
+
+    assert report["status"] == "PARTIAL_UNLABELLED_OUTCOMES"
+    assert report["unlabelled_outcome_rows"] == 1
+    assert report["other_invalid_rows"] == 0
+    assert report["outcome_status_known"] is False
+    assert report["label_issues_by_kind"] == {"ALL_THREE_LABELS_BLANK": 1}
+    assert report["clean_race_sensitivity"] is not None
+    assert report["known_invalid_test_oos_rows"] == 1
+    assert csv_file.read_bytes() == original
