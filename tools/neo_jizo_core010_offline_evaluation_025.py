@@ -220,6 +220,45 @@ def _invalid_reason(exc: Exception) -> str:
     return "OTHER_INVALID_VALUE"
 
 
+def _label_issue_kind(row: dict[str, str]) -> str:
+    """Classify LABEL fields only; do not infer cancellation or future status."""
+    vals = [_value(row, f"label_{t}") for t in TARGETS]
+    blanks = [v == "" for v in vals]
+    missing = sum(blanks)
+    if missing == 3:
+        return "ALL_THREE_LABELS_BLANK"
+    if missing == 2:
+        return "TWO_LABELS_BLANK"
+    if missing == 1:
+        return "ONE_LABEL_BLANK"
+
+    try:
+        parsed = [float(v) for v in vals]
+    except ValueError:
+        return "NON_NUMERIC_LABEL"
+    if any(not math.isfinite(x) or x not in (0.0, 1.0) for x in parsed):
+        return "NON_BINARY_OR_NONFINITE_LABEL"
+    if parsed != sorted(parsed):
+        return "NONMONOTONIC_TARGET_LABELS"
+    return "LABELS_VALID_OTHER_ERROR"
+
+
+def _raw_scope(row: dict[str, str]) -> str:
+    try:
+        return {1.0: "JRA", 2.0: "NAR"}.get(
+            float(_value(row, "race_scope_cd")), "OTHER"
+        )
+    except ValueError:
+        return "UNKNOWN"
+
+
+def _raw_year(row: dict[str, str]) -> str:
+    try:
+        return str(date.fromisoformat(_value(row, "race_date")[:10]).year)
+    except ValueError:
+        return "UNKNOWN_DATE"
+
+
 def _raw_split(row: dict[str, str], windows: list[tuple[str, date, date]]) -> str:
     try:
         return split_for_day(date.fromisoformat(_value(row, "race_date")[:10]), windows)
@@ -391,7 +430,12 @@ def evaluate_csv(csv_path: Path, provenance_info: dict[str, Any], windows: list[
     invalid_types: dict[str, int] = defaultdict(int)
     invalid_reasons: dict[str, int] = defaultdict(int)
     invalid_by_split: dict[str, int] = defaultdict(int)
+    label_issues_by_kind: dict[str, int] = defaultdict(int)
+    label_issues_by_split: dict[tuple[str, str], int] = defaultdict(int)
+    label_issues_by_year: dict[tuple[str, str], int] = defaultdict(int)
+    label_issues_by_scope: dict[tuple[str, str], int] = defaultdict(int)
     invalid_race_ids: set[str] = set()
+    invalid_race_ids_by_split: dict[str, set[str]] = defaultdict(set)
     invalid_missing_race_id = 0
     total_rows = 0
 
@@ -406,11 +450,23 @@ def evaluate_csv(csv_path: Path, provenance_info: dict[str, Any], windows: list[
                 dt, scope, race, horse, labels, probs, raw_score = parse(raw)
             except (ValueError, TypeError, OverflowError, KeyError) as exc:
                 invalid_types[type(exc).__name__] += 1
-                invalid_reasons[_invalid_reason(exc)] += 1
-                invalid_by_split[_raw_split(raw, windows)] += 1
+                reason = _invalid_reason(exc)
+                invalid_reasons[reason] += 1
+                split = _raw_split(raw, windows)
+                invalid_by_split[split] += 1
+                if reason in (
+                    "INVALID_OR_MISSING_OUTCOME_LABELS",
+                    "INCONSISTENT_OUTCOME_LABELS",
+                ):
+                    label_issue = _label_issue_kind(raw)
+                    label_issues_by_kind[label_issue] += 1
+                    label_issues_by_split[(split, label_issue)] += 1
+                    label_issues_by_year[(_raw_year(raw), label_issue)] += 1
+                    label_issues_by_scope[(_raw_scope(raw), label_issue)] += 1
                 raw_id = _value(raw, "race_id")
                 if raw_id:
                     invalid_race_ids.add(raw_id)
+                    invalid_race_ids_by_split[split].add(raw_id)
                 else:
                     invalid_missing_race_id += 1
                 continue
@@ -504,6 +560,51 @@ def evaluate_csv(csv_path: Path, provenance_info: dict[str, Any], windows: list[
         "invalid_row_types": dict(sorted(invalid_types.items())),
         "invalid_row_reasons": dict(sorted(invalid_reasons.items())),
         "invalid_rows_by_split": dict(sorted(invalid_by_split.items())),
+        "label_issues_by_kind": dict(sorted(label_issues_by_kind.items())),
+        "label_issues_by_split": {
+            split: {
+                kind: label_issues_by_split[(split, kind)]
+                for kind in sorted(label_issues_by_kind)
+                if label_issues_by_split[(split, kind)] > 0
+            }
+            for split in SPLITS + ("UNCLASSIFIED", "UNKNOWN_DATE")
+            if any(label_issues_by_split[(split, kind)] for kind in label_issues_by_kind)
+        },
+        "label_issues_by_year": {
+            year: {
+                kind: label_issues_by_year[(year, kind)]
+                for kind in sorted(label_issues_by_kind)
+                if label_issues_by_year[(year, kind)] > 0
+            }
+            for year in sorted({year for year, _ in label_issues_by_year})
+        },
+        "label_issues_by_scope": {
+            scope: {
+                kind: label_issues_by_scope[(scope, kind)]
+                for kind in sorted(label_issues_by_kind)
+                if label_issues_by_scope[(scope, kind)] > 0
+            }
+            for scope in ("JRA", "NAR", "OTHER", "UNKNOWN")
+            if any(label_issues_by_scope[(scope, kind)] for kind in label_issues_by_kind)
+        },
+        "invalid_affected_races_by_split": {
+            split: len(races) for split, races
+            in sorted(invalid_race_ids_by_split.items())
+        },
+        "split_label_coverage": {
+            split: {
+                "valid_rows": row_counts.get(split, 0),
+                "invalid_rows": invalid_by_split.get(split, 0),
+                "labeled_coverage": (
+                    row_counts.get(split, 0)
+                    / (row_counts.get(split, 0) + invalid_by_split.get(split, 0))
+                    if row_counts.get(split, 0) + invalid_by_split.get(split, 0)
+                    else None
+                ),
+            }
+            for split in SPLITS + ("UNCLASSIFIED", "UNKNOWN_DATE")
+            if row_counts.get(split, 0) or invalid_by_split.get(split, 0)
+        },
         "invalid_rows_total": invalid_count,
         "valid_rows_total": sum(row_counts.values()),
         "valid_row_fraction": (
@@ -564,6 +665,20 @@ def main() -> int:
     for reason, count in result["invalid_row_reasons"].items():
         print(f"  {reason}: {count}")
     print(f"Invalid rows by split: {result['invalid_rows_by_split']}")
+    print("--- LABEL ISSUE SUBTYPES (NO ROW DATA) ---")
+    for kind, count in result["label_issues_by_kind"].items():
+        print(f"  {kind}: {count}")
+    print(f"Label issues by scope: {result['label_issues_by_scope']}")
+    print(f"Label issues by split: {result['label_issues_by_split']}")
+    print("--- LABEL COVERAGE ---")
+    for split, item in result["split_label_coverage"].items():
+        coverage = item["labeled_coverage"]
+        print(
+            f"  {split}: labeled={item['valid_rows']} invalid={item['invalid_rows']} "
+            f"coverage={coverage:.3%}" if coverage is not None
+            else f"  {split}: NO ROWS"
+        )
+    print(f"Affected races by split: {result['invalid_affected_races_by_split']}")
     print(
         f"Known invalid TEST/OOS rows: {result['known_invalid_test_oos_rows']}, "
         f"unknown-date rows: {result['invalid_rows_with_unknown_date']}, "
