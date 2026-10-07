@@ -115,6 +115,39 @@ Important correction / confirmation:
 
 Next probe must inspect column metadata only for the minimum active tables. No race rows yet.
 
+## BAOZ-PROBE-003 local evidence — 2026-10-08
+
+Founder-provided column-map probe succeeded:
+
+- Target DBs: 5
+- Opened DBs: 5
+- Failed DBs: 0
+- Columns mapped: 2472
+- Keyword hits: 1690
+- Metadata only: True
+- User rows read: False
+- BaoZ modified: False
+
+Key findings:
+
+- `DB\BaoZ.ex.mdb / 出走馬T` has 112 columns and contains, in one row grain:
+  - race/runner keys: 競走コード, 馬番, 血統登録番号
+  - prediction values: 予想タイム指数, 予想タイム指数順位
+  - scoring/ranks: デフォルト得点, 得点, 馬券評価順位, 得点V1/V2/V3 and their ranks
+  - market: 単勝オッズ, 単勝人気, 単勝/複勝推定オッズ, 投票直前オッズ
+  - outcomes: 単勝配当, 複勝配当, 入線順位, 確定着順
+- `DB\BaoZ.mdb / レースT` contains race-level prediction state including 予想勝ち指数, 予想決着指数, 波乱度 and popular-horse score/rank fields.
+- `DB\BaoZ.mdb / 予想設定T` is key/value configuration (セクション, キー, データ); there is no explicit static 印 column in the schema.
+- `DB\MasterDB\BaoZ-SE.mdb / 出走馬マスタ` independently contains race/runner keys, 確定着順, 単勝オッズ, 単勝人気順 and mining fields.
+- `DB\MasterDB\BaoZ-HC.mdb / 調教分析T` contains aggregate Miho/Ritto slope and wood-chip features keyed by 競走コード + 馬番.
+- Current local BaoZ training schema explicitly contains both ウッドチップ調教T and 坂路調教T.
+
+Interpretation:
+
+- BAOZ baseline can likely be evaluated from a small number of tables.
+- Do not equate GUI ◎ with any one rank column yet; GUI mark-generation logic must be identified first.
+- Next probe may read aggregate-only row statistics (COUNT/MIN/MAX/non-null coverage), but must not print horse-level rows.
+
 ## Current model/research state
 
 - NEO JIZO baseline: `jockey-25`
