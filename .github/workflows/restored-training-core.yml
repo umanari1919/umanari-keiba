@@ -1,0 +1,38 @@
+name: restored-training-core
+
+on:
+  pull_request:
+    paths:
+      - "src/**"
+      - "docs/RESTORED_TRAINING_CORE.md"
+      - ".github/workflows/restored-training-core.yml"
+  push:
+    branches: [main]
+    paths:
+      - "src/**"
+      - "docs/RESTORED_TRAINING_CORE.md"
+      - ".github/workflows/restored-training-core.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  smoke:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+        python-version: ["3.13", "3.14"]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v6
+        with:
+          python-version: ${{ matrix.python-version }}
+      - name: Compile restored source
+        run: python -m compileall -q src
+      - name: Verify 48 configs and three-target probability mass
+        shell: pwsh
+        run: |
+          $env:PYTHONPATH = "src"
+          python -c "import training_three_targets as t; assert len(t.CONFIGS)==48; p=t.marginals([1.,2.,3.,4.]); assert len(p)==3; assert abs(sum(p[0])-1)<1e-8; assert abs(sum(p[1])-2)<1e-8; assert abs(sum(p[2])-3)<1e-8; print('RESTORED TRAINING CORE SMOKE PASS')"
