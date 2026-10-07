@@ -682,6 +682,64 @@ Top3 also declines from roughly 19-22% in stronger years to 15-17% in 2024-2026.
 - This looks like a cross-organizer regime shift rather than a single venue failure.
 - Next step: map BaoZ `トラック種別コード` to raw `トラックコード` locally, then split the intersection by organizer x year with the resolved surface semantics.
 
+## BAOZ-PROBE-013 local evidence — 2026-10-08
+
+Track semantics and the P7-9 x track_type=1 regime shift were confirmed.
+
+### Track semantics
+
+BaoZ `トラック種別コード` maps cleanly to JV-Data raw track codes:
+
+- type 0 -> raw 10/11/12/17/18/20/21 (flat turf family)
+- type 1 -> raw 23/24/26 (flat dirt family)
+- type 2 -> raw 52/54/55/56/57 (jump/obstacle family)
+
+Therefore, for this dataset:
+- track_type 0 = turf
+- track_type 1 = dirt
+- track_type 2 = obstacle/jump
+
+### P7-9 x dirt x 馬券評価順位=1
+
+2019-2023 vs 2024-2026:
+
+Organizer 2:
+- n 2,467 -> 1,549
+- win about 4% -> 3%
+- top3 20% -> 17%
+- win deficit vs old rate: -22.81
+
+Organizer 1:
+- n 1,016 -> 549
+- win about 5% -> 3%
+- top3 20% -> 14%
+- win deficit vs old rate: -10.02
+
+Combined deficit: -32.83 wins, about 79% of the total P7+ deficit (-41.37).
+
+### Yearly pattern
+
+The P7-9 dirt intersection is mostly around 4-6% win rate through 2012-2023, then:
+
+- 2024: ~3%
+- 2025: ~3%
+- 2026: ~3%
+
+Top3 also declines.
+
+### Important methodology gate
+
+Before attributing the post-2024 decay to model logic, training, bloodline, market structure, or any racing feature, we must prove temporal integrity of the historical BaoZ prediction fields.
+
+Required next checks:
+
+- historical prediction/scoring fields existed before or at race time, not only after result ingestion;
+- `データ作成年月日` / race date relationship is understood;
+- no obvious post-race leakage indicator contaminates rank fields;
+- backfilled/recalculated historical predictions are distinguished from contemporaneous predictions if possible.
+
+Until this gate passes, the 2024 dirt-longshot regime shift remains a descriptive observation, not a causal model diagnosis.
+
 ## Current model/research state
 
 - NEO JIZO baseline: `jockey-25`
