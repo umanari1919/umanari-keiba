@@ -173,11 +173,23 @@ function Get-GitRelation {
         [Parameter(Mandatory)][string]$Branch
     )
 
-    $head = (Invoke-GitText -Path $Path -Arguments @('rev-parse', 'HEAD')).Text.Trim()
+    $headProbe = Invoke-GitText -Path $Path -Arguments @('rev-parse', '--verify', 'HEAD') -AllowFailure
+    $hasLocalHead = ($headProbe.Code -eq 0 -and [bool]$headProbe.Text.Trim())
+    $head = if ($hasLocalHead) { $headProbe.Text.Trim() } else { '(unborn)' }
 
     # Metadata/object fetch only. No checkout, reset, clean, merge, rebase, or working-tree write.
     Invoke-GitText -Path $Path -Arguments @('fetch', '--no-tags', '--quiet', $Remote, $Branch) | Out-Null
     $canonical = (Invoke-GitText -Path $Path -Arguments @('rev-parse', 'FETCH_HEAD')).Text.Trim()
+
+    if (-not $hasLocalHead) {
+        return [pscustomobject]@{
+            LocalHead = $head
+            CanonicalHead = $canonical
+            Relation = 'unborn'
+            AheadBy = 0
+            BehindBy = $null
+        }
+    }
 
     $relation = 'unrelated'
     if ($head -eq $canonical) {
@@ -204,9 +216,12 @@ function Get-GitRelation {
     $counts = Invoke-GitText -Path $Path -Arguments @('rev-list', '--left-right', '--count', "$head...$canonical") -AllowFailure
     $aheadBy = $null
     $behindBy = $null
-    if ($counts.Code -eq 0 -and $counts.Text -match '^\s*(\d+)\s+(\d+)\s*$') {
-        $aheadBy = [int]$Matches[1]
-        $behindBy = [int]$Matches[2]
+    if ($counts.Code -eq 0) {
+        $parts = @($counts.Text.Trim() -split '\s+' | Where-Object { $_ })
+        if ($parts.Count -eq 2) {
+            $aheadBy = [int]$parts[0]
+            $behindBy = [int]$parts[1]
+        }
     }
 
     [pscustomobject]@{
@@ -221,29 +236,42 @@ function Get-GitRelation {
 function Get-KeywordEvidence {
     param([Parameter(Mandatory)][string]$Path)
 
-    $grep = Invoke-GitText -Path $Path -Arguments @(
-        'grep', '-n', '-I',
-        '-e', 'jockey-25',
-        '-e', '3目標',
-        '-e', '調教48',
-        '--', '.'
-    ) -AllowFailure
+    # git grep cannot see untracked files and an unborn repository may contain only
+    # untracked work. Scan likely source/document files directly, excluding bulky dirs.
+    $matches = [System.Collections.Generic.List[string]]::new()
+    $collect = [System.Collections.Generic.List[string]]::new()
+    $allowedExtensions = @('.py', '.ps1', '.psm1', '.md', '.txt', '.json', '.toml', '.yml', '.yaml', '.sql', '.csv', '.tsv')
 
-    $collect = @()
     try {
-        $collect = Get-ChildItem -LiteralPath $Path -Filter 'collect_training.py' -File -Recurse -Depth 8 -ErrorAction SilentlyContinue |
+        Get-ChildItem -LiteralPath $Path -File -Recurse -Depth 8 -ErrorAction SilentlyContinue |
             Where-Object {
-                $_.FullName -notmatch '[\\/](\.git|\.venv|venv|node_modules|data|artifacts|backups)[\\/]'
+                $_.FullName -notmatch '[\\/](\.git|\.venv|venv|node_modules|data|artifacts|backups|\.pytest_cache|__pycache__)[\\/]' -and
+                $allowedExtensions -contains $_.Extension.ToLowerInvariant()
             } |
-            ForEach-Object { $_.FullName.Substring($Path.Length).TrimStart('\', '/') }
+            ForEach-Object {
+                $file = $_
+                $rel = $file.FullName.Substring($Path.Length).TrimStart('\', '/')
+                if ($file.Name -eq 'collect_training.py') {
+                    $collect.Add($rel)
+                }
+                try {
+                    Select-String -LiteralPath $file.FullName -Pattern 'jockey-25', '3目標', '調教48' -SimpleMatch -ErrorAction SilentlyContinue |
+                        Select-Object -First 20 |
+                        ForEach-Object {
+                            $matches.Add(('{0}:{1}:{2}' -f $rel, $_.LineNumber, $_.Line.Trim()))
+                        }
+                }
+                catch {
+                }
+            }
     }
     catch {
-        $collect = @("SCAN_ERROR: $($_.Exception.Message)")
+        $matches.Add("SCAN_ERROR: $($_.Exception.Message)")
     }
 
     [pscustomobject]@{
-        KeywordMatches = if ($grep.Code -eq 0) { @($grep.Text -split "`n" | Where-Object { $_ }) } else { @() }
-        CollectTrainingFiles = @($collect)
+        KeywordMatches = @($matches | Select-Object -First 200)
+        CollectTrainingFiles = @($collect | Select-Object -Unique)
     }
 }
 
@@ -269,15 +297,24 @@ function Write-SyncReport {
 
     $evidence = Get-KeywordEvidence -Path $Path
 
-    $localOnlyLog = (Invoke-GitText -Path $Path -Arguments @(
-        'log', '--oneline', '--decorate', '--max-count=30',
-        "$($relation.CanonicalHead)..$($relation.LocalHead)"
-    ) -AllowFailure).Text
+    if ($relation.Relation -eq 'unborn') {
+        $localOnlyLog = ''
+        $canonicalOnlyLog = (Invoke-GitText -Path $Path -Arguments @(
+            'log', '--oneline', '--decorate', '--max-count=30',
+            $relation.CanonicalHead
+        ) -AllowFailure).Text
+    }
+    else {
+        $localOnlyLog = (Invoke-GitText -Path $Path -Arguments @(
+            'log', '--oneline', '--decorate', '--max-count=30',
+            "$($relation.CanonicalHead)..$($relation.LocalHead)"
+        ) -AllowFailure).Text
 
-    $canonicalOnlyLog = (Invoke-GitText -Path $Path -Arguments @(
-        'log', '--oneline', '--decorate', '--max-count=30',
-        "$($relation.LocalHead)..$($relation.CanonicalHead)"
-    ) -AllowFailure).Text
+        $canonicalOnlyLog = (Invoke-GitText -Path $Path -Arguments @(
+            'log', '--oneline', '--decorate', '--max-count=30',
+            "$($relation.LocalHead)..$($relation.CanonicalHead)"
+        ) -AllowFailure).Text
+    }
 
     $timestamp = Get-Date -Format 'yyyyMMdd-HHmmss'
     if (-not $Destination) {
@@ -434,8 +471,19 @@ function Invoke-SelfTest {
         $rUnrelated = Get-GitRelation -Path $unrelated -Remote $canonical -Branch 'main'
         if ($rUnrelated.Relation -ne 'unrelated') { throw "Expected unrelated, got $($rUnrelated.Relation)" }
 
+        $unborn = Join-Path $root 'unborn'
+        & git init -b main $unborn | Out-Null
+        'jockey-25 3目標 調教48' | Set-Content -LiteralPath (Join-Path $unborn 'notes.md') -Encoding utf8
+        New-Item -ItemType Directory -Force -Path (Join-Path $unborn 'src') | Out-Null
+        '# test' | Set-Content -LiteralPath (Join-Path $unborn 'src/collect_training.py') -Encoding utf8
+        $rUnborn = Get-GitRelation -Path $unborn -Remote $canonical -Branch 'main'
+        if ($rUnborn.Relation -ne 'unborn') { throw "Expected unborn, got $($rUnborn.Relation)" }
+        $eUnborn = Get-KeywordEvidence -Path $unborn
+        if ($eUnborn.KeywordMatches.Count -lt 1) { throw 'Expected keyword evidence in unborn repo.' }
+        if ($eUnborn.CollectTrainingFiles.Count -ne 1) { throw 'Expected collect_training.py in unborn repo.' }
+
         Write-Host "SYNC-GATE-001 self-test PASS ($gitVersion)"
-        Write-Host 'same / ahead / behind / diverged / unrelated: PASS'
+        Write-Host 'same / ahead / behind / diverged / unrelated / unborn: PASS'
     }
     finally {
         Remove-Item -LiteralPath $root -Recurse -Force -ErrorAction SilentlyContinue
