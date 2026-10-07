@@ -1,49 +1,108 @@
 # NEXT MISSION
 
-Mission ID: `WEEKEND-REALITY-GATE-001`
-更新日: 2026-10-07
+Mission ID: `NEO-JIZO-DIRT-EDGE-025`
+更新日: 2026-10-08
 Priority: P0
-Status: READY
+Status: DESIGN / IMPLEMENTATION READY
 
 ## Goal
 
-Use the already-restored local code and local read-only data to determine the real
-operational state for the upcoming JRA weekend and the requested historical replay.
+Turn the confirmed BaoZ baseline weakness in
+`馬券評価順位=1 x popularity 7-9 x dirt`
+into an independent NEO JIZO benchmark and model-design test.
 
-Do not repeat source rescue.
+The mission is not to copy or tune BaoZ.
+BaoZ remains a private benchmark.
 
-## Required checks
+## Frozen evidence
 
-1. Run the local portfolio/weekend status from the existing
-   `neo-jizo-keiba` workspace.
-2. Verify PostgreSQL `mykeibadb` access is read-only for the prediction path.
-3. Re-check confirmed race-card availability for 2026-10-10 through 2026-10-12,
-   Tokyo / Kyoto.
-4. Keep special registrations separate from confirmed race cards.
-5. Execute or finish the pre-race-only replay for 2026-10-03 and 2026-10-04.
-6. For real cards that pass timing/roster gates, produce jockey-25
-   win / top-2 / top-3 predictions.
-7. Do not inject the unpromoted workout candidate into the personal output.
-8. Report only operational blockers and usable predictions/results.
+For P7-9 dirt:
 
-## Safety
+- market base win rate:
+  - 2019-2023: 1.958%
+  - 2024-2026: 1.877%
+- BaoZ-selected win rate:
+  - 2019-2023: 4.536%
+  - 2024-2026: 2.955%
+- market-relative lift:
+  - 2.317x -> 1.574x
+- selection advantage OR:
+  - 2.438 -> 1.609
+- post/pre OR ratio:
+  - 0.660
+  - 95% CI [0.487, 0.894]
+  - p = 0.007374
 
-- No source-file transport is needed.
-- Do not delete the local workspace or database.
-- Do not reset/clean the unborn local repository.
+## Research question
+
+Can NEO JIZO preserve or improve market-relative discrimination in this regime
+using independent, time-aware features?
+
+## Feature families to test
+
+1. speed / expected time
+2. pace and forward-position ability
+3. running-style suitability
+4. bloodline track/distance suitability
+5. course / draw / field-size context
+6. Field Strength
+7. training
+8. jockey/trainer, evaluated with strict time-aware validation
+
+## Required probability targets
+
+Evaluate separately:
+
+- win probability
+- top-2 probability
+- top-3 probability
+
+Do not optimize win rate alone.
+
+## Evaluation design
+
+Primary comparison windows:
+
+- reference: 2019-2023
+- recent: 2024 onward
+
+Primary target regime:
+
+- dirt
+- popularity 7-9 used only for benchmark slicing, not as a model input unless explicitly approved
+- compare NEO JIZO score/rank against market and BaoZ private benchmark
+
+Required metrics:
+
+- win / top2 / top3
+- calibration
+- market-relative lift
+- odds-band stability
+- JRA / NAR split
+- venue split
+- field-size split
+- yearly stability
+- confidence intervals where practical
+
+## Guardrails
+
+- Keep BaoZ settings unchanged.
+- Do not use BaoZ outputs as public/commercial prediction content.
+- Do not train NEO JIZO to imitate BaoZ rank/score.
+- Do not leak future statistics into historical rows.
+- Keep raw MDB/licensed data local.
+- GitHub receives only code, contracts, tests, sanitized aggregate evidence, and hashes.
+- No destructive DB changes.
 - No automatic wagering.
-- No automatic research-to-production promotion.
-- Prefer read-only DB access for this gate.
 
-## Completion
+## Completion gate
 
-Mission completes when we have:
+PASS requires a reproducible NEO JIZO benchmark showing whether independent
+features improve recent P7-9 dirt discrimination relative to:
 
-- actual weekend source state,
-- actual history/readiness state,
-- 10/3–10/4 replay status,
-- real predicted race/runner counts if cards are available,
-- exact blockers if predictions are not yet possible.
+1. market baseline;
+2. BaoZ frozen private benchmark;
+3. NEO JIZO's own older-period performance.
 
-After completion, the next mission should be chosen from actual runtime evidence,
-not from the old rescue backlog.
+If recent lift does not improve, report FAIL/PARTIAL rather than tuning until it does.
+
