@@ -1531,3 +1531,36 @@ An updated evaluator now independently counts:
 This new schema has synthetic tests in CI. No source CSV rewrites, DB connections, service actions, runner details or horse-level exports.
 
 The next local action, ONLY after all CI gates pass, is one DB-free evaluation with the pinned classification-enabled Python script.
+
+
+## NEO-JIZO-025 final missing-label subtype audit — 2026-10-08
+
+The third read-only CORE-010 scan confirms the precise CSV fact:
+
+- 805,095 input rows.
+- 8,573 rows (1.065%) have **all three outcome labels blank** (win/top2/top3).
+- No malformed, partially missing, non-binary, or contradictory labels were detected within those 8,573.
+- JRA blank-all rows: 4,956; NAR: 3,617.
+- By split: TRAIN 3,930 / VALIDATION 1,144 / SELECTION 971 / TEST 992 / OOS 1,536.
+- By year: 2016 744; 2017 709; 2018 768; 2019 827; 2020 757; 2021 698; 2022 752; 2023 785; 2024 764; 2025 677; 2026 1,092.
+- The blank labels cannot be classified as cancellations, exclusions, nonfinishers, or unresolved race outcomes until source-status evidence is obtained.
+- Do **not** convert empty labels into loss=0 or win=0.
+
+Usable row coverage:
+- TEST 95,933 / (95,933+992) = 98.977%.
+- OOS 89,907 / (89,907+1,536) = 98.320%.
+- Race IDs affected by missing label rows: TEST 898; OOS 793.
+
+After excluding each race with detected invalid/unlabelled rows, sensitivity-only top1 rates:
+
+| Target | TEST 6,892 top1 | OOS 6,375 top1 |
+|---|---:|---:|
+| Win | 31.6744% | 29.5216% |
+| Top2 | 49.2890% | 48.9725% |
+| Top3 | 61.1434% | 60.9569% |
+
+A close sensitivity result does NOT establish that omissions are random; data cannot be certified for complete racecards or pre-race archived timestamps. No direct comparison to BaoZ P7–9 dirt is supported.
+
+**Engineering decision:** stop repeating the same 805,095-row scan. Mark missing outcomes as quarantined, not numeric corruption. Preserve original CSV. Keep the 025 retrospective diagnostics PARTIAL; prioritize the independent forward-looking frozen pre-race prediction/evaluation gate next.
+
+On GitHub the evaluator now emits status PARTIAL_UNLABELLED_OUTCOMES when and only when every invalid row is an entirely missing three-target result. No claims of an external reason for blanks are made. This new label will appear only after a future execution of the updated script and does not require a repeat scan for the present decision.
