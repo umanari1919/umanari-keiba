@@ -278,6 +278,78 @@ Next:
 - test P7+ by year/era, popularity sub-band, and odds band;
 - measure concentration of returns and recent-period robustness.
 
+## BAOZ-PROBE-007 local evidence — 2026-10-08
+
+Longshot-stability validation completed.
+
+### Rank agreement
+
+- 馬券評価順位 vs 得点V3順位:
+  - exact rank equality: 99.91%
+  - rank-1 overlap: 243,911
+  - rank-1 Jaccard: 99.90%
+- Treat these as operationally near-duplicates until the small disagreement set is explained.
+
+### P7+ longshot result
+
+`馬券評価順位=1 x popularity 7+`:
+
+- n: 19,428
+- win: 3.89%
+- top3: 16.48%
+- provisional win index: 104.920
+- provisional place index: 94.090
+
+Popularity sub-bands:
+
+- P7-9: n 14,805 / win index 103.541
+- P10-12: n 3,851 / win index 98.634
+- P13+: n 772 / win index 162.707
+
+However, era stability shows strong decay:
+
+- 2010-2014: 130.611
+- 2015-2019: 104.268
+- 2020-2024: 95.114
+- 2025-2026: 81.812
+
+Recent annual win index:
+
+- 2020: 101.88
+- 2021: 88.27
+- 2022: 104.59
+- 2023: 112.27
+- 2024: 72.03
+- 2025: 80.65
+- 2026: 83.31
+
+Tail contribution is not extreme:
+
+- payouts >= 5,000: 19.605% of total win return
+- payouts >= 10,000: 5.797%
+- payouts >= 20,000: 0%
+
+### Other ranking longshot results
+
+- 得点V2順位=1 x P7+: overall 101.151, but 2025-2026 = 87.864
+- 得点V3順位=1 x P7+: overall 104.823, but 2025-2026 = 81.670
+- 予想タイム指数順位=1 x P7+: overall 100.988, but 2025-2026 = 68.592
+
+### Interpretation
+
+- The historical P7+ edge is real enough to study, but it is not stable in the recent regime.
+- Do NOT promote the historical 100%+ result into a current betting rule.
+- The 2024-2026 deterioration is the new primary research target.
+- Since 馬券評価順位 and 得点V3順位 are 99.9% equivalent, future work can use 馬券評価順位 as the canonical representative unless disagreement analysis requires otherwise.
+- Rank fields show no observations in 1999-2009 for the P7+ focus; exact first-coverage date/regime must be measured.
+
+Next:
+
+- identify the exact rank-coverage start date;
+- locate the 2024 regime break by venue/organizer, surface, class, field size, and popularity/odds bands;
+- compare recent vs historical disagreement with market popularity;
+- keep BaoZ settings frozen.
+
 ## Current model/research state
 
 - NEO JIZO baseline: `jockey-25`
