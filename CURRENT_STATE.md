@@ -350,6 +350,60 @@ Next:
 - compare recent vs historical disagreement with market popularity;
 - keep BaoZ settings frozen.
 
+## BAOZ-PROBE-008 local evidence — 2026-10-08
+
+Regime-break probe completed.
+
+### Effective rank coverage
+
+All six BaoZ rank fields are non-null back to 1999-06-16, but the first actual `rank=1` observation for every rank definition is 2012-01-01.
+
+Therefore:
+
+- 1999-2011 must not be treated as valid ranked-baseline history.
+- The primary ranked baseline period is fixed to 2012-01-01 onward.
+- Earlier non-null rank values are treated as pre-ranking/default-state records until proven otherwise.
+
+### Longshot focus: 馬券評価順位=1 x popularity 7+
+
+Organizer aggregate:
+
+- organizer 1: n 10,743 / win index 103.69 / place index 92.08
+- organizer 2: n 8,685 / win index 106.45 / place index 96.58
+
+Track-type aggregate:
+
+- code 1: n 13,344 / win index 109.05
+- code 0: n 5,578 / win index 94.77
+- code 2: n 506 / win index 107.91
+
+Field-size aggregate:
+
+- 10-12: 108.15
+- 13-15: 106.86
+- <=9: 102.63
+- 16+: 99.44
+
+Recent organizer x year confirms deterioration is not isolated to only one organizer:
+
+- 2024: organizer 1 = 92.72 / organizer 2 = 49.72
+- 2025: organizer 1 = 74.58 / organizer 2 = 86.82
+- 2026: organizer 1 = 95.02 / organizer 2 = 72.68
+
+### Odds scale sanity
+
+- minimum positive-looking stored odds observed: 0.8
+- maximum: 999.9
+- average market favorite: 2.186
+- average popularity 7-9: 63.705
+- average popularity 13+: 207.533
+
+Interpretation:
+
+- stored odds appear decimal-like, but sub-1.0 anomalies require explicit filtering/validation before odds-band analysis;
+- 2024-2026 deterioration appears across both organizer codes, so it is not explained by a single organizer alone;
+- venue-code-only analysis is insufficient; next probe must resolve venue names and compare matched segments before/after 2024.
+
 ## Current model/research state
 
 - NEO JIZO baseline: `jockey-25`
