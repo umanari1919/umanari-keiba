@@ -243,6 +243,41 @@ Next:
 - test exact agreement/redundancy among ranking definitions;
 - preserve aggregate-only output.
 
+## BAOZ-PROBE-006 local evidence — 2026-10-08
+
+Rank-1 x market-popularity cross completed.
+
+### Headline
+
+The strongest provisional win-return pockets are concentrated in longshot selections.
+
+| rank definition | popularity band | n | win | top2 | top3 | win index | place index |
+|---|---|---:|---:|---:|---:|---:|---:|
+| 予想タイム指数順位=1 | P7+ | 6,435 | 4.32% | 9.98% | 16.99% | 100.988 | 85.688 |
+| 馬券評価順位=1 | P7+ | 19,428 | 3.89% | 9.47% | 16.48% | 104.920 | 94.090 |
+| 得点V2順位=1 | P7+ | 25,878 | 3.40% | 8.20% | 13.95% | 101.151 | 88.534 |
+| 得点V3順位=1 | P7+ | 19,446 | 3.89% | 9.46% | 16.47% | 104.823 | 94.059 |
+
+Other observations:
+
+- BaoZ rank-1 selections that are market favorite have very high hit rates but return indices below 100.
+- 馬券評価順位 and 得点V3順位 remain nearly numerically identical at every popularity band.
+- payout sanity: minimum positive win payout = 100, maximum = 89,080; minimum positive place payout = 100, maximum = 29,280.
+- 283,627 winners were in the valid population; 282,877 had positive win payout. The remaining 750 require anomaly/refund/record-status investigation before formal ROI certification.
+- Rank-agreement console table was blank due to a PowerShell output-shape bug; the agreement calculation itself must be rerun with PSCustomObject output.
+
+Interpretation:
+
+- There is a credible longshot-value hypothesis, especially 馬券評価順位/V3 rank=1 at popularity 7+.
+- This is not yet declared profitable. It must survive year/era splits and odds-band decomposition and must not be driven by a few extreme payouts.
+- GUI mark mapping is still unresolved.
+
+Next:
+
+- repair rank-agreement display;
+- test P7+ by year/era, popularity sub-band, and odds band;
+- measure concentration of returns and recent-period robustness.
+
 ## Current model/research state
 
 - NEO JIZO baseline: `jockey-25`
