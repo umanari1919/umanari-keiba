@@ -182,6 +182,119 @@ def split_for_day(day: date, windows: list[tuple[str, date, date]]) -> str:
     return "UNCLASSIFIED"
 
 
+def _invalid_reason(exc: Exception) -> str:
+    """Stable, aggregate-only categories; do not expose source rows."""
+    detail = str(exc).lower()
+    if "missing unique key" in detail:
+        return "MISSING_RUNNER_KEY"
+    if "isoformat" in detail or "invalid isoformat" in detail:
+        return "INVALID_RACE_DATE"
+    if "race_scope_cd" in detail or "could not convert string to float" in detail:
+        return "INVALID_OR_MISSING_SCOPE_OR_NUMERIC_VALUE"
+    if "inconsistent outcome labels" in detail:
+        return "INCONSISTENT_OUTCOME_LABELS"
+    if "invalid target labels" in detail:
+        return "INVALID_OR_MISSING_OUTCOME_LABELS"
+    if "invalid probability" in detail or "non-monotonic" in detail:
+        return "INVALID_OR_NONMONOTONIC_PROBABILITIES"
+    if "invalid raw win score" in detail:
+        return "INVALID_RAW_WIN_SCORE"
+    return "OTHER_INVALID_VALUE"
+
+
+def _raw_split(row: dict[str, str], windows: list[tuple[str, date, date]]) -> str:
+    try:
+        return split_for_day(date.fromisoformat(_value(row, "race_date")[:10]), windows)
+    except (ValueError, TypeError):
+        return "UNKNOWN_DATE"
+
+
+def _record_dimensions(
+    aggregates: dict[tuple[str, int, str, str], Aggregate],
+    part: str,
+    year: int,
+    scope: str,
+    bucket: str,
+    labels: tuple[int, int, int],
+    probs: tuple[float, float, float],
+) -> None:
+    for dims in (
+        (part, year, scope, bucket),
+        (part, year, "ALL", bucket),
+        (part, 0, scope, bucket),
+        (part, 0, "ALL", bucket),
+    ):
+        aggregates[dims].add(labels, probs)
+
+
+def _clean_race_sensitivity(
+    path: Path,
+    windows: list[tuple[str, date, date]],
+    affected_race_ids: set[str],
+) -> dict[str, Any]:
+    """Separate sensitivity: exclude races containing any detected invalid row.
+
+    Even this cannot prove absent/unrecorded horses, so "clean" means only
+    no invalid row observed in the available CSV.
+    """
+    aggregates: dict[tuple[str, str, str], Aggregate] = defaultdict(Aggregate)
+    leaders: dict[tuple[str, str], tuple[float, float, str, str, tuple[int, int, int], tuple[float, float, float]]] = {}
+    race_ids: set[tuple[str, str]] = set()
+    with path.open("r", encoding="utf-8-sig", newline="") as stream:
+        for row in csv.DictReader(stream):
+            race_id = _value(row, "race_id")
+            if not race_id or race_id in affected_race_ids:
+                continue
+            try:
+                dt, scope, race, horse, labels, probs, raw_score = parse(row)
+            except (ValueError, TypeError, OverflowError, KeyError):
+                continue
+            part = split_for_day(dt, windows)
+            if part not in ("TEST", "OOS"):
+                continue
+            race_ids.add((part, race))
+            for dims in ((part, scope, "ALL"), (part, "ALL", "ALL")):
+                aggregates[dims].add(labels, probs)
+            k = (part, race)
+            current = leaders.get(k)
+            if current is None or probs[0] > current[0] or (
+                probs[0] == current[0] and (
+                    raw_score > current[1] or
+                    (raw_score == current[1] and horse < current[2])
+                )
+            ):
+                leaders[k] = (probs[0], raw_score, horse, scope, labels, probs)
+
+    for (part, _race), (_p, _raw, _horse, scope, labels, probs) in leaders.items():
+        for dims in ((part, scope, "SELECTED_TOP1"), (part, "ALL", "SELECTED_TOP1")):
+            aggregates[dims].add(labels, probs)
+
+    summaries: list[dict[str, Any]] = []
+    for part in ("TEST", "OOS"):
+        for scope in ("ALL", "JRA", "NAR"):
+            base = aggregates[(part, scope, "ALL")]
+            top1 = aggregates[(part, scope, "SELECTED_TOP1")]
+            summaries.append({
+                "split": part,
+                "organizer": scope,
+                "all_runners": base.n,
+                "model_top1": top1.n,
+                "model_top1_rates": {
+                    t: (top1.positives[i] / top1.n if top1.n else None)
+                    for i, t in enumerate(TARGETS)
+                },
+                "model_top1_lift": {
+                    t: _lift(top1, base, i) for i, t in enumerate(TARGETS)
+                },
+            })
+    return {
+        "interpretation": "Sensitivity excluding every race with any detected invalid row; missing/unrecorded entrants are not detectable",
+        "excluded_unique_race_ids": len(affected_race_ids),
+        "remaining_test_oos_races": len(race_ids),
+        "by_split_scope": summaries,
+    }
+
+
 def _lift(selected: Aggregate, base: Aggregate, target_index: int) -> float | None:
     if selected.n == 0 or base.n == 0 or base.positives[target_index] == 0:
         return None
@@ -198,6 +311,10 @@ def evaluate_csv(csv_path: Path, provenance_info: dict[str, Any], windows: list[
     seen: set[tuple[str, str]] = set()
     row_counts: dict[str, int] = defaultdict(int)
     invalid_types: dict[str, int] = defaultdict(int)
+    invalid_reasons: dict[str, int] = defaultdict(int)
+    invalid_by_split: dict[str, int] = defaultdict(int)
+    invalid_race_ids: set[str] = set()
+    invalid_missing_race_id = 0
     total_rows = 0
 
     with csv_path.open("r", encoding="utf-8-sig", newline="") as stream:
@@ -211,6 +328,13 @@ def evaluate_csv(csv_path: Path, provenance_info: dict[str, Any], windows: list[
                 dt, scope, race, horse, labels, probs, raw_score = parse(raw)
             except (ValueError, TypeError, OverflowError, KeyError) as exc:
                 invalid_types[type(exc).__name__] += 1
+                invalid_reasons[_invalid_reason(exc)] += 1
+                invalid_by_split[_raw_split(raw, windows)] += 1
+                raw_id = _value(raw, "race_id")
+                if raw_id:
+                    invalid_race_ids.add(raw_id)
+                else:
+                    invalid_missing_race_id += 1
                 continue
             key = (race, horse)
             if key in seen:
@@ -270,11 +394,23 @@ def evaluate_csv(csv_path: Path, provenance_info: dict[str, Any], windows: list[
             },
         })
 
+    invalid_count = sum(invalid_reasons.values())
+    known_invalid_eval_rows = sum(
+        invalid_by_split.get(part, 0) for part in ("TEST", "OOS")
+    )
     status = ("HOLDOUT_CONTRACT_MATCHED" if provenance_info["verified"] else "DIAGNOSTIC_ONLY")
-    if sum(invalid_types.values()):
+    if invalid_count:
         status = "PARTIAL_INVALID_ROWS"
     if not any(item["base"]["n"] and item["split"] == "OOS" for item in report):
         status = "BLOCKED_NO_OOS"
+
+    # A sensitivity run is triggered only if a known TEST/OOS row was invalid
+    # or the split was unknown. The benchmark is NOT silently promoted to PASS.
+    clean_sensitivity = None
+    if known_invalid_eval_rows or invalid_by_split.get("UNKNOWN_DATE", 0):
+        clean_sensitivity = _clean_race_sensitivity(
+            csv_path, windows, invalid_race_ids
+        )
 
     return {
         "mission": "NEO-JIZO-DIRT-EDGE-025",
@@ -288,6 +424,18 @@ def evaluate_csv(csv_path: Path, provenance_info: dict[str, Any], windows: list[
         "total_rows_read": total_rows,
         "rows_by_split": dict(sorted(row_counts.items())),
         "invalid_row_types": dict(sorted(invalid_types.items())),
+        "invalid_row_reasons": dict(sorted(invalid_reasons.items())),
+        "invalid_rows_by_split": dict(sorted(invalid_by_split.items())),
+        "invalid_rows_total": invalid_count,
+        "valid_rows_total": sum(row_counts.values()),
+        "valid_row_fraction": (
+            sum(row_counts.values()) / total_rows if total_rows else None
+        ),
+        "known_invalid_test_oos_rows": known_invalid_eval_rows,
+        "invalid_rows_with_unknown_date": invalid_by_split.get("UNKNOWN_DATE", 0),
+        "invalid_rows_without_race_id": invalid_missing_race_id,
+        "affected_races_detected": len(invalid_race_ids),
+        "clean_race_sensitivity": clean_sensitivity,
         "races_with_top1": len(leaders),
         "by_split_year_scope": report,
         "safety": {
@@ -329,6 +477,31 @@ def main() -> int:
     print(f"Rows read: {result['total_rows_read']}")
     print(f"Status: {result['status']}")
     print(f"Temporal provenance: {meta['status']}")
+    print(
+        f"Invalid rows: {result['invalid_rows_total']} "
+        f"({(1 - result['valid_row_fraction']) * 100:.3f}% of input)"
+    )
+    print("Invalid reasons (aggregate only):")
+    for reason, count in result["invalid_row_reasons"].items():
+        print(f"  {reason}: {count}")
+    print(f"Invalid rows by split: {result['invalid_rows_by_split']}")
+    print(
+        f"Known invalid TEST/OOS rows: {result['known_invalid_test_oos_rows']}, "
+        f"unknown-date rows: {result['invalid_rows_with_unknown_date']}, "
+        f"affected race IDs: {result['affected_races_detected']}"
+    )
+    if result["clean_race_sensitivity"] is not None:
+        print("--- CLEAN-RACE SENSITIVITY (NO DETECTED INVALID ROWS) ---")
+        for item in result["clean_race_sensitivity"]["by_split_scope"]:
+            if item["organizer"] != "ALL":
+                continue
+            print(
+                f"{item['split']}: runners={item['all_runners']} "
+                f"top1={item['model_top1']} "
+                f"win={item['model_top1_rates']['win']} "
+                f"top2={item['model_top1_rates']['top2']} "
+                f"top3={item['model_top1_rates']['top3']}"
+            )
     if meta["reason"]:
         for item in meta["reason"]:
             print("  CONTRACT_WARNING:", item)
