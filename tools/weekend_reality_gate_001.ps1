@@ -123,6 +123,22 @@ function To-CompactBlockers {
     return '(none)'
 }
 
+
+function Get-FailureClass {
+    param([string[]]$Lines)
+
+    $text = ($Lines -join [Environment]::NewLine)
+    if ($text -match '(?i)(connection refused|could not connect|server.*not running|No connection could be made)') { return 'DB_CONNECTION' }
+    if ($text -match '(?i)(password authentication failed|no password supplied|fe_sendauth|authentication failed)') { return 'DB_AUTH' }
+    if ($text -match '(?i)(psql.*not found|No such file or directory|WinError 2|cannot find the file)') { return 'PSQL_NOT_FOUND' }
+    if ($text -match '(?i)(relation .* does not exist|undefined table)') { return 'TABLE_MISSING' }
+    if ($text -match '(?i)(column .* does not exist|undefined column)') { return 'COLUMN_MISSING' }
+    if ($text -match '(?i)(statement timeout|canceling statement due to statement timeout|TimeoutExpired)') { return 'DB_TIMEOUT' }
+    if ($text -match '(?i)(JSONDecodeError|Expecting value)') { return 'DB_OUTPUT_NOT_JSON' }
+    if ($text -match '(?i)(FileNotFoundError|ModuleNotFoundError|ImportError)') { return 'LOCAL_RUNTIME_DEPENDENCY' }
+    return 'UNKNOWN'
+}
+
 function New-GateSummary {
     param(
         [string]$Root,
@@ -144,10 +160,12 @@ function New-GateSummary {
         observed_at = (Get-Date).ToString('o')
         repo_path = $Root
         steps = @($Steps | ForEach-Object {
+            $tail = @($_.Output | Select-Object -Last 12)
             [pscustomobject]@{
                 name = $_.Name
                 exit_code = $_.ExitCode
-                output_tail = @($_.Output | Select-Object -Last 12)
+                failure_class = if ($_.ExitCode -eq 0) { 'NONE' } else { Get-FailureClass -Lines $tail }
+                output_tail = $tail
             }
         })
         db_read_only = $sourceReadOnly
@@ -172,7 +190,7 @@ function New-GateSummary {
 
 function Invoke-SelfTest {
     $steps = @(
-        [pscustomobject]@{ Name='source'; ExitCode=0; Output=@('ok') },
+        [pscustomobject]@{ Name='source'; ExitCode=1; Output=@('psql: error: connection to server at "127.0.0.1", port 5433 failed: Connection refused') },
         [pscustomobject]@{ Name='replay'; ExitCode=0; Output=@('ok') }
     )
     $source = [pscustomobject]@{
@@ -194,6 +212,7 @@ function Invoke-SelfTest {
     if ($summary.replay_races -ne 24) { throw 'Expected replay race count.' }
     if ($summary.personal_predicted_races -ne 0) { throw 'Expected zero personal forecasts.' }
     if ($summary.source_state -ne 'awaiting_confirmed_race_cards') { throw 'Expected source waiting state.' }
+    if ($summary.steps[0].failure_class -ne 'DB_CONNECTION') { throw 'Expected DB_CONNECTION classification.' }
     Write-Host 'WEEKEND-REALITY-GATE-001 self-test PASS'
 }
 
@@ -276,7 +295,12 @@ Write-Host "Forecast races/runners: $($summary.personal_predicted_races) / $($su
 Write-Host "Blockers             : $($summary.personal_blockers)"
 Write-Host ''
 foreach ($step in $summary.steps) {
-    Write-Host ("{0,-28}: exit {1}" -f $step.name, $step.exit_code)
+    Write-Host ("{0,-28}: exit {1} [{2}]" -f $step.name, $step.exit_code, $step.failure_class)
+    if ($step.exit_code -ne 0) {
+        foreach ($line in @($step.output_tail | Select-Object -Last 5)) {
+            Write-Host ("    " + $line) -ForegroundColor Yellow
+        }
+    }
 }
 Write-Host ''
 Write-Host "JSON report          : $jsonPath"
