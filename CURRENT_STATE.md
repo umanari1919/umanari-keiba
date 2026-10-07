@@ -23,7 +23,7 @@ GitHub ActionsはUbuntu/Windows、Python 3.13/3.14でmodern-stackの品質ゲー
 
 ## 重要: ローカル最新版との同期状態
 
-状態: **UNVERIFIED / AUDIT RUNNER READY**
+状態: **LOCAL AUDIT COMPLETE / RESCUE CLASSIFICATION REQUIRED**
 
 2026-10-06までローカル側では `neo-jizo-keiba` 作業が進んでいたが、その最新内容がこのGitHub mainへ完全同期済みとは確認できていない。
 
@@ -60,3 +60,20 @@ GitHubとローカル `neo-jizo-keiba` の差分を確定し、どちらが正�
 - `modern-stack-quality`: Ubuntu/Windows × Python 3.13/3.14 PASS
 
 ローカル最新版との関係そのものは、ローカル監査ランナーを1回実行するまで未確定。
+
+
+## SYNC-GATE-001 実測結果
+
+実行日: 2026-10-07
+
+- Local repo: `C:\Users\uchih\Documents\Codex\2026-10-06\new-chat\neo-jizo-keiba`
+- Relation: `unborn`
+- Local HEAD: `(unborn)`
+- Canonical HEAD observed: `6f81d275f46b793f6e33cd5846060de2055656fb`
+- Tracked changes: 0
+- Untracked files: 272
+- Keyword hits: 1
+- `collect_training.py`: 0
+
+解釈: ローカル作業フォルダーはGit初期化済みだが初回commit前で、272ファイルがすべて未追跡。
+現時点では `git add .`、pull、checkout、merge等を行わず、まず未追跡272件を分類して救出対象を確定する。
