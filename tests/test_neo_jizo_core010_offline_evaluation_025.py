@@ -271,3 +271,32 @@ def test_invalid_input_reasons_are_safe_aggregates(
     assert result["invalid_rows_by_split"] == {"OOS": 1}
     assert result["status"] == "PARTIAL_INVALID_ROWS"
     assert result["safety"]["horse_rows_output"] is False
+
+
+
+def test_scope_mix_standardization_decomposes_apparent_decline(tmp_path: Path) -> None:
+    root = make_root(tmp_path)
+    rows: list[dict[str, str]] = []
+    # TEST: 1 JRA and 3 NAR selected horses; all win.
+    rows.append(row("TJ1", "H1", "2023-03-01", 1, 1, 1, .6, .8, .9, "1"))
+    for i in range(3):
+        rows.append(row(f"TN{i}", f"HN{i}", "2023-03-02", 1, 1, 1, .6, .8, .9, "2"))
+    # OOS: 3 JRA selected horses lose, 1 NAR selected horse wins.
+    for i in range(3):
+        rows.append(row(f"OJ{i}", f"HJ{i}", "2024-03-02", 0, 0, 0, .6, .8, .9, "1"))
+    rows.append(row("ON1", "HN1", "2024-03-02", 1, 1, 1, .6, .8, .9, "2"))
+    src = put_rows(root, rows)
+    meta, windows = offline.provenance(root)
+    result = offline.evaluate_csv(src, meta, windows)
+    comparison = result["scope_mix_comparison"]
+    assert comparison["available"] is True
+    assert comparison["test_top1_nar_share"] == pytest.approx(.75)
+    assert comparison["oos_top1_nar_share"] == pytest.approx(.25)
+    win = comparison["targets"]["win"]
+    assert win["test_observed_rate"] == pytest.approx(1)
+    assert win["oos_observed_rate"] == pytest.approx(.25)
+    assert win["oos_at_test_scope_mix_rate"] == pytest.approx(.75)
+    assert win["unadjusted_change_pp"] == pytest.approx(-75)
+    assert win["scope_standardized_change_pp"] == pytest.approx(-25)
+    assert win["scope_composition_contribution_pp"] == pytest.approx(-50)
+    assert result["status"] == "HOLDOUT_CONTRACT_MATCHED"
