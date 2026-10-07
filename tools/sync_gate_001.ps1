@@ -174,7 +174,7 @@ function Get-GitRelation {
     )
 
     $headProbe = Invoke-GitText -Path $Path -Arguments @('rev-parse', '--verify', 'HEAD') -AllowFailure
-    $hasLocalHead = ($headProbe.Code -eq 0 -and $headProbe.Text.Trim())
+    $hasLocalHead = ($headProbe.Code -eq 0 -and [bool]$headProbe.Text.Trim())
     $head = if ($hasLocalHead) { $headProbe.Text.Trim() } else { '(unborn)' }
 
     # Metadata/object fetch only. No checkout, reset, clean, merge, rebase, or working-tree write.
@@ -216,7 +216,23 @@ function Get-GitRelation {
     $counts = Invoke-GitText -Path $Path -Arguments @('rev-list', '--left-right', '--count', "$head...$canonical") -AllowFailure
     $aheadBy = $null
     $behindBy = $null
-    if ($counts.Code -eq 0 -and $counts.Text -match '^\s*(\d+)\s+(\d+)\s*
+    if ($counts.Code -eq 0) {
+        $parts = @($counts.Text.Trim() -split '\s+' | Where-Object { $_ })
+        if ($parts.Count -eq 2) {
+            $aheadBy = [int]$parts[0]
+            $behindBy = [int]$parts[1]
+        }
+    }
+
+    [pscustomobject]@{
+        LocalHead = $head
+        CanonicalHead = $canonical
+        Relation = $relation
+        AheadBy = $aheadBy
+        BehindBy = $behindBy
+    }
+}
+
 function Get-KeywordEvidence {
     param([Parameter(Mandatory)][string]$Path)
 
@@ -224,7 +240,7 @@ function Get-KeywordEvidence {
     # untracked work. Scan likely source/document files directly, excluding bulky dirs.
     $matches = [System.Collections.Generic.List[string]]::new()
     $collect = [System.Collections.Generic.List[string]]::new()
-    $allowedExtensions = @('.py','.ps1','.psm1','.md','.txt','.json','.toml','.yml','.yaml','.sql','.csv','.tsv')
+    $allowedExtensions = @('.py', '.ps1', '.psm1', '.md', '.txt', '.json', '.toml', '.yml', '.yaml', '.sql', '.csv', '.tsv')
 
     try {
         Get-ChildItem -LiteralPath $Path -File -Recurse -Depth 8 -ErrorAction SilentlyContinue |
@@ -239,10 +255,10 @@ function Get-KeywordEvidence {
                     $collect.Add($rel)
                 }
                 try {
-                    Select-String -LiteralPath $file.FullName -Pattern 'jockey-25','3目標','調教48' -SimpleMatch -ErrorAction SilentlyContinue |
+                    Select-String -LiteralPath $file.FullName -Pattern 'jockey-25', '3目標', '調教48' -SimpleMatch -ErrorAction SilentlyContinue |
                         Select-Object -First 20 |
                         ForEach-Object {
-                            $matches.Add("$rel:$($_.LineNumber):$($_.Line.Trim())")
+                            $matches.Add(('{0}:{1}:{2}' -f $rel, $_.LineNumber, $_.Line.Trim()))
                         }
                 }
                 catch {
