@@ -211,7 +211,8 @@ GROUP BY [$key]
 HAVING Count([$name]) >= 2 AND Min([$name]) <> Max([$name])
 "@
                 $varying=Count-Rows $conn $sql
-                $entities=[int64](Invoke-Scalar $conn "SELECT Count(*) FROM (SELECT [$key] FROM [出走馬T] WHERE [年月日] Between #2012-01-01# And #$cutoff# AND [$key] Is Not Null AND [$name] Is Not Null GROUP BY [$key])")
+                $entitySql="SELECT [$key] FROM [出走馬T] WHERE [年月日] Between #2012-01-01# And #$cutoff# AND [$key] Is Not Null AND [$name] Is Not Null GROUP BY [$key]"
+                $entities=Count-Rows $conn $entitySql
                 $variation[$domain].features[$name]=[ordered]@{
                     entities_with_values=$entities
                     entities_with_historical_variation=$varying
