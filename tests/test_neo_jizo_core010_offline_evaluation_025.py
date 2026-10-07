@@ -60,6 +60,7 @@ def row(race: str, horse: str, dt: str, win: int, top2: int, top3: int,
         "label_win": f"{win}.0",
         "label_top2": f"{top2}.0",
         "label_top3": f"{top3}.0",
+        "p_win": str(pw),
         "p_win_cal": str(pw),
         "p_top2_cal": str(p2),
         "p_top3_cal": str(p3),
@@ -85,6 +86,7 @@ def test_reads_only_test_and_oos_and_aggregates_three_targets(tmp_path: Path) ->
     assert not result["safety"]["database_accessed"]
     assert not result["safety"]["horse_rows_output"]
     assert result["assessment_scope"] == "ALL_SURFACES; NO_P7_9_OR_DIRT_SLICE"
+    assert "p_win desc" in result["model_top1_order"]
 
     by_key = {
         (item["split"], item["year"], item["organizer"]): item
@@ -156,3 +158,22 @@ def test_signature_mismatch_prevents_official_status(tmp_path: Path) -> None:
     meta, _ = offline.provenance(root)
     assert not meta["verified"]
     assert "CORE-010 decision split signature mismatch" in meta["reason"]
+
+
+
+def test_float_race_scope_and_raw_score_break_calibrated_ties(tmp_path: Path) -> None:
+    root = make_root(tmp_path)
+    best = row("R_TIE", "H2", "2024-01-05", 1, 1, 1, .71, .8, .9, "1.0")
+    worst = row("R_TIE", "H1", "2024-01-05", 0, 0, 0, .31, .8, .9, "1.0")
+    best["p_win_cal"] = ".45"
+    worst["p_win_cal"] = ".45"
+    src = put_rows(root, [best, worst])
+    meta, windows = offline.provenance(root)
+    report = offline.evaluate_csv(src, meta, windows)
+    oos = next(
+        x for x in report["by_split_year_scope"]
+        if x["split"] == "OOS" and x["year"] == "ALL"
+        and x["organizer"] == "JRA"
+    )
+    assert oos["model_top1"]["win"]["actual_rate"] == 1
+    assert report["status"] == "HOLDOUT_CONTRACT_MATCHED"
