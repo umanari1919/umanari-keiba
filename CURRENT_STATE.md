@@ -1239,6 +1239,69 @@ Print exact yearly market-relative lift for 2019-2026:
 
 This will establish whether 2024 is a genuine step-change in model-specific lift rather than a period-average artifact.
 
+## BAOZ-PROBE-024 local evidence — 2026-10-08
+
+Regime-significance gate completed for `馬券評価順位=1 x popularity 7-9 x dirt`.
+
+### Selected-candidate win-rate change
+
+- 2019-2023: 158 / 3,483 = 4.536%
+- 2024-2026: 62 / 2,098 = 2.955%
+- difference: -1.581 percentage points
+- z = 2.940
+- two-sided p = 0.003281
+
+The BaoZ-selected candidate win rate declined materially and statistically.
+
+### Base market-segment change
+
+All P7-9 dirt runners:
+
+- 2019-2023: 3,915 / 199,966 = 1.958%
+- 2024-2026: 2,137 / 113,832 = 1.877%
+- difference: -0.081 percentage points
+- z = 1.577
+- two-sided p = 0.114896
+
+The underlying market segment did not show a comparably strong change.
+
+### Selection advantage vs non-selected runners
+
+- 2019-2023 selection OR: 2.438
+  - 95% CI [2.071, 2.869]
+- 2024-2026 selection OR: 1.609
+  - 95% CI [1.245, 2.080]
+
+Post/pre OR ratio:
+
+- 0.660
+- 95% CI [0.487, 0.894]
+- z = -2.679
+- p = 0.007374
+
+### Frozen conclusion for this regime
+
+Within the untouched BaoZ baseline, the `馬券評価順位=1 x popularity 7-9 x dirt` segment shows a statistically supported loss of market-relative selection strength from 2024 onward.
+
+This conclusion is scoped to this regime only. It must not be generalized to all BaoZ races or all BaoZ prediction fields.
+
+Historical evidence remains labeled **retrospective evaluation**, not a certified contemporaneous archived-forecast backtest.
+
+### Design implication for NEO JIZO
+
+Do not imitate BaoZ's composite score.
+
+Use BaoZ as a private benchmark and independently test:
+- 予想タイム系 / speed signal
+- 先行・脚質 / pace-position signal
+- bloodline track/distance suitability
+- course/field/race context
+- Field Strength
+- training
+- jockey/trainer signals with time-aware validation
+
+The next engineering/research mission is `NEO-JIZO-DIRT-EDGE-025`.
+
 ## Current model/research state
 
 - NEO JIZO baseline: `jockey-25`
