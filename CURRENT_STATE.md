@@ -905,6 +905,57 @@ Next gate:
 - determine whether jockey/trainer/bloodline/course evaluation values are stored per race and vary historically for the same entity;
 - do not label the retrospective evaluation leakage-safe until this is resolved.
 
+## BAOZ-PROBE-017 local evidence — 2026-10-08
+
+Materialized historical feature audit completed.
+
+### Strong evidence of per-race historical materialization
+
+Within `出走馬T`, historical feature values exist across the full ranked period and into future cards.
+
+Key same-entity variation:
+
+- jockey key `騎手コード`
+  - entities with 騎手評価 values: 849
+  - entities whose 騎手評価 changes historically: 795
+  - about 93.6% show historical variation
+
+- trainer key `調教師コード`
+  - entities with 調教師評価 values: 976
+  - entities whose 調教師評価 changes historically: 933
+  - about 95.6% show historical variation
+
+This is strong evidence that at least jockey/trainer evaluation values are materialized per race/runner and are not simply the current 2026-10-01 snapshot copied uniformly across all history.
+
+### Historical feature coverage
+
+Materialized columns include:
+
+- 予想タイム指数
+- デフォルト得点 / 得点 / 得点V1/V2/V3
+- 血統距離評価 / 血統トラック評価 / 血統成長力評価 / 血統総合評価
+- B variants of bloodline evaluations
+- 騎手評価 / 調教師評価
+- 枠順評価 / 脚質評価
+- タイム指数回帰系
+- 騎手ランキング / 調教師ランキング
+
+These values are populated historically and future cards also contain many prediction-side values.
+
+### Important limitation
+
+This does not yet prove that every historical feature was computed strictly from data available as of that historical race date.
+
+The remaining high-value provenance test is cross-version stability:
+
+- compare the same historical race-period aggregates across active and backup BaoZ databases from different dates;
+- if historical materialized values remain unchanged while current snapshots differ, that strongly supports frozen historical predictions;
+- if old historical values change across BaoZ database versions, historical recomputation/backfill is occurring.
+
+### Display bug
+
+The console table under `CANDIDATE FEATURE COLUMNS` printed dictionary keys repeatedly because ordered dictionaries were passed directly to `Format-Table`. This is a presentation bug only; the actual period/variation calculations completed successfully.
+
 ## Current model/research state
 
 - NEO JIZO baseline: `jockey-25`
