@@ -21,7 +21,7 @@ def main():
     result=dict(updated_at=datetime.now().astimezone().isoformat(),weekend_dates=['20261010','20261011','20261012'],venues=['東京','京都'],use='個人の馬券判断支援',deadline_first_day=DEADLINE,team=dict(input='出馬表の取得と欠損診断',engine='jockey-25の3目標予測',integration='一括実行・画面・再試行'),**summarize(source,forecast),steps=steps,run_success=all(s['exit_code']==0 for s in steps),research_missions_preserved=True,automatic_betting=False,existing_db_changed=False)
     folder=OUT/datetime.now().strftime('%Y%m%d-%H%M%S-%f');jwk.save(folder/'result.json',result);jwk.save(OUT/'latest.json',result)
     message=f"週末JRA（10月10〜12日・東京／京都）：{'予想保存済み' if result['predicted_races'] else '確定出馬表の到着待ち'}。{result['predicted_races']}レース・{result['predicted_runners']}頭。個人の判断支援用。"
-    section='<!-- WEEKEND_STATUS_START --><section id="weekend-status" style="max-width:1100px;margin:20px auto;padding:20px;background:#fff;border:2px solid #315b85;border-radius:12px"><h2>週末JRAの準備</h2><p>'+message+'</p><p>取得・予測・表示を一括確認しています。特別登録は確定出馬表と区別します。</p></section><!-- WEEKEND_STATUS_END -->'
+    section='<!-- WEEKEND_STATUS_START --><section id="weekend-status" style="max-width:1100px;margin:20px auto;padding:20px;background:#fff;border:2px solid #315b85;border-radius:12px"><h2>NEO JIZO FORWARD｜週末JRAの準備</h2><p>'+message+'</p><p>取得・予測・表示を一括確認しています。特別登録は確定出馬表と区別します。</p></section><!-- WEEKEND_STATUS_END -->'
     race_sections=[]
     for race in forecast.get('predictions',[]):
         rid=race['race_id']
