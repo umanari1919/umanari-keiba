@@ -117,7 +117,10 @@ function To-CompactBlockers {
     foreach ($property in $Personal.input_checks.blocker_counts.PSObject.Properties) {
         $pairs += "$($property.Name)=$($property.Value)"
     }
-    return if ($pairs.Count) { $pairs -join ', ' } else { '(none)' }
+    if ($pairs.Count) {
+        return ($pairs -join ', ')
+    }
+    return '(none)'
 }
 
 function New-GateSummary {
