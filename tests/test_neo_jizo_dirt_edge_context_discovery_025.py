@@ -76,8 +76,13 @@ def test_wsl_socket_fallback_without_db_service_mutation(
     assert len(calls) == 2
     command = calls[-1]["command"]
     assert "-d" in command and "Ubuntu" in command
-    assert "-h /tmp" in command[command.index("-lc") + 1]
-    assert "default_transaction_read_only=on" in command[command.index("-lc") + 1]
+    shell = command[command.index("-lc") + 1]
+    assert "/home/*/.keiba_ai/postgres18/bin/psql" in shell
+    assert "/root/.keiba_ai/postgres18/bin/psql" in shell
+    assert "default_transaction_read_only=on" in shell
+    assert '/tmp /var/run/postgresql /run/postgresql' in shell
+    assert "No live-looking PostgreSQL socket" not in shell
+    assert "no live-looking PostgreSQL socket" in shell
     assert "pg_ctl" not in str(command)
     assert "systemctl" not in str(command)
     assert "service" not in str(command)
