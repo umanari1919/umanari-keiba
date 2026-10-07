@@ -240,3 +240,34 @@ def test_invalid_unknown_date_requires_sensitivity(tmp_path: Path) -> None:
     assert output["clean_race_sensitivity"]["excluded_unique_race_ids"] == 1
     assert output["clean_race_sensitivity"]["remaining_test_oos_races"] == 0
     assert output["status"] == "PARTIAL_INVALID_ROWS"
+
+
+
+@pytest.mark.parametrize(
+    ("column", "bad_value", "expected_reason"),
+    [
+        ("race_scope_cd", "", "INVALID_OR_MISSING_SCOPE"),
+        ("label_win", "", "INVALID_OR_MISSING_OUTCOME_LABELS"),
+        ("p_top3_cal", "", "INVALID_OR_NONMONOTONIC_PROBABILITIES"),
+        ("p_win", "", "INVALID_RAW_WIN_SCORE"),
+    ],
+)
+def test_invalid_input_reasons_are_safe_aggregates(
+    tmp_path: Path,
+    column: str,
+    bad_value: str,
+    expected_reason: str,
+) -> None:
+    root = make_root(tmp_path)
+    invalid = row("R_BAD", "H0", "2024-01-06", 0, 0, 0, .3, .4, .5)
+    invalid[column] = bad_value
+    src = put_rows(root, [
+        invalid,
+        row("R_GOOD", "H1", "2024-01-07", 1, 1, 1, .5, .7, .8),
+    ])
+    meta, windows = offline.provenance(root)
+    result = offline.evaluate_csv(src, meta, windows)
+    assert result["invalid_row_reasons"] == {expected_reason: 1}
+    assert result["invalid_rows_by_split"] == {"OOS": 1}
+    assert result["status"] == "PARTIAL_INVALID_ROWS"
+    assert result["safety"]["horse_rows_output"] is False
