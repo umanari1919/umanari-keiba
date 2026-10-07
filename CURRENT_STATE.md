@@ -1363,3 +1363,29 @@ Local dependency remaining:
 
 Run the read-only market-context discovery once. The result determines the exact PostgreSQL source for popularity and win odds. Do not write model code or tune weights until this mapping is resolved.
 
+
+
+## NEO JIZO 025 local PostgreSQL connectivity blocker — 2026-10-08
+
+Confirmed locally by running the pinned 025 market-context discovery:
+
+- Windows PostgreSQL TCP endpoint 127.0.0.1:5433 refused connection (Windows socket 10061).
+- WSL Ubuntu did execute a shell but the original custom PostgreSQL client search found no executable psql under the expected ~/.keiba_ai /home/* /root locations.
+- NO SQL schema inspection or result-row extraction completed.
+- This is not evidence that the PostgreSQL cluster or 45GB historical pgdata18 has been deleted.
+
+Policy decision: stop repeating SQL connection attempts until direct file-system evidence exists.
+
+Next single-pass audit: tools/neo_jizo_pg_storage_audit_025.ps1.
+
+This audit does NOT invoke psql, pg_ctl, systemctl, service, SQL, or any DB write.
+It only inspects:
+- WSL distro/user/home;
+- presence of ~/.keiba_ai/postgres18/bin/psql;
+- pgdata18/PG_VERSION;
+- postmaster.pid *existence* (not process proof);
+- 5433 Unix socket existence;
+- D:/WSL/Ubuntu VHDX metadata;
+- whether the existing CORE-010 CSV is present (header only).
+
+If cluster files are present but no socket is listening, treat PostgreSQL as offline / unreachable, and keep NEO JIZO evaluation code ready rather than changing storage or attempting a destructive DB restoration.
