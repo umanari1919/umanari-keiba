@@ -205,6 +205,9 @@ class ProbabilityAggregate:
                 "win_rate": None,
                 "top2_rate": None,
                 "top3_rate": None,
+                "win_rate_ci95": None,
+                "top2_rate_ci95": None,
+                "top3_rate_ci95": None,
                 "avg_p_win": None,
                 "avg_p_top2": None,
                 "avg_p_top3": None,
@@ -233,6 +236,9 @@ class ProbabilityAggregate:
             "win_rate": win_rate,
             "top2_rate": top2_rate,
             "top3_rate": top3_rate,
+            "win_rate_ci95": _wilson_interval(self.wins, n),
+            "top2_rate_ci95": _wilson_interval(self.top2, n),
+            "top3_rate_ci95": _wilson_interval(self.top3, n),
             "avg_p_win": avg_p_win,
             "avg_p_top2": avg_p_top2,
             "avg_p_top3": avg_p_top3,
@@ -252,7 +258,24 @@ def _safe_ratio(numerator: float | None, denominator: float | None) -> float | N
     return numerator / denominator
 
 
-def _odds_ratio(selected: ProbabilityAggregate, base: ProbabilityAggregate) -> float | None:
+def _wilson_interval(successes: int, total: int, z: float = 1.96) -> list[float] | None:
+    if total <= 0:
+        return None
+    p = successes / total
+    z2 = z * z
+    denominator = 1 + z2 / total
+    center = (p + z2 / (2 * total)) / denominator
+    half = (
+        z
+        * math.sqrt((p * (1 - p) / total) + z2 / (4 * total * total))
+        / denominator
+    )
+    return [max(0.0, center - half), min(1.0, center + half)]
+
+
+def _odds_ratio_details(
+    selected: ProbabilityAggregate, base: ProbabilityAggregate
+) -> dict[str, float | None]:
     nonselected_n = base.starts - selected.starts
     nonselected_w = base.wins - selected.wins
     a = selected.wins
@@ -260,8 +283,15 @@ def _odds_ratio(selected: ProbabilityAggregate, base: ProbabilityAggregate) -> f
     c = nonselected_w
     d = nonselected_n - nonselected_w
     if min(a, b, c, d) <= 0:
-        return None
-    return (a / b) / (c / d)
+        return {"odds_ratio": None, "ci95_low": None, "ci95_high": None}
+
+    odds_ratio = (a / b) / (c / d)
+    log_se = math.sqrt(1 / a + 1 / b + 1 / c + 1 / d)
+    return {
+        "odds_ratio": odds_ratio,
+        "ci95_low": math.exp(math.log(odds_ratio) - 1.96 * log_se),
+        "ci95_high": math.exp(math.log(odds_ratio) + 1.96 * log_se),
+    }
 
 
 def _evaluate_prepared(rows: Iterable[PreparedRow]) -> ProbabilityAggregate:
@@ -352,6 +382,8 @@ def evaluate_rows(
             },
         }
 
+    odds_ratio = _odds_ratio_details(selected, base)
+
     return {
         "contract_version": "NEO-JIZO-DIRT-EDGE-025/v1",
         "filters": {
@@ -363,7 +395,13 @@ def evaluate_rows(
         "base": base_metrics,
         "selected": selected_metrics,
         "lift": lifts,
-        "selection_win_odds_ratio": _odds_ratio(selected, base),
+        "selection_win_odds_ratio": odds_ratio["odds_ratio"],
+        "selection_win_odds_ratio_ci95": [
+            odds_ratio["ci95_low"],
+            odds_ratio["ci95_high"],
+        ]
+        if odds_ratio["odds_ratio"] is not None
+        else None,
         "by_year": by_year,
         "by_organizer": by_organizer,
     }
