@@ -300,3 +300,65 @@ def test_scope_mix_standardization_decomposes_apparent_decline(tmp_path: Path) -
     assert win["scope_standardized_change_pp"] == pytest.approx(-25)
     assert win["scope_composition_contribution_pp"] == pytest.approx(-50)
     assert result["status"] == "HOLDOUT_CONTRACT_MATCHED"
+
+
+
+def test_label_issue_subtypes_coverage_by_split_and_scope(tmp_path: Path) -> None:
+    root = make_root(tmp_path)
+    blank_all = row("R1", "H1", "2024-01-10", 0, 0, 0, .3, .5, .7, "1")
+    for col in ("label_win", "label_top2", "label_top3"):
+        blank_all[col] = ""
+    blank_one = row("R2", "H2", "2024-01-11", 0, 0, 0, .3, .5, .7, "2")
+    blank_one["label_win"] = ""
+    malformed = row("R3", "H3", "2023-01-12", 0, 0, 0, .3, .5, .7, "1")
+    malformed["label_top2"] = "bad"
+    nonbinary = row("R4", "H4", "2023-01-13", 0, 0, 0, .3, .5, .7, "2")
+    nonbinary["label_top3"] = "2"
+    contradictory = row("R5", "H5", "2024-01-14", 0, 0, 0, .3, .5, .7, "1")
+    contradictory["label_win"] = "1"
+    good = row("R6", "H6", "2024-01-15", 1, 1, 1, .4, .6, .8, "2")
+    src = put_rows(root, [
+        blank_all, blank_one, malformed, nonbinary, contradictory, good
+    ])
+    meta, windows = offline.provenance(root)
+    result = offline.evaluate_csv(src, meta, windows)
+    assert result["invalid_rows_total"] == 5
+    assert result["label_issues_by_kind"] == {
+        "ALL_THREE_LABELS_BLANK": 1,
+        "ONE_LABEL_BLANK": 1,
+        "NON_NUMERIC_LABEL": 1,
+        "NON_BINARY_OR_NONFINITE_LABEL": 1,
+        "NONMONOTONIC_TARGET_LABELS": 1,
+    }
+    assert result["label_issues_by_split"]["TEST"] == {
+        "NON_BINARY_OR_NONFINITE_LABEL": 1,
+        "NON_NUMERIC_LABEL": 1,
+    }
+    assert result["label_issues_by_split"]["OOS"] == {
+        "ALL_THREE_LABELS_BLANK": 1,
+        "NONMONOTONIC_TARGET_LABELS": 1,
+        "ONE_LABEL_BLANK": 1,
+    }
+    assert result["label_issues_by_scope"]["JRA"] == {
+        "ALL_THREE_LABELS_BLANK": 1,
+        "NONMONOTONIC_TARGET_LABELS": 1,
+        "NON_NUMERIC_LABEL": 1,
+    }
+    assert result["split_label_coverage"]["OOS"]["labeled_coverage"] == pytest.approx(.25)
+    assert result["split_label_coverage"]["TEST"]["labeled_coverage"] == pytest.approx(0)
+    assert result["invalid_affected_races_by_split"] == {"OOS": 3, "TEST": 2}
+    assert result["status"] == "PARTIAL_INVALID_ROWS"
+
+
+def test_two_missing_labels_not_misclassified_as_bad_value(tmp_path: Path) -> None:
+    root = make_root(tmp_path)
+    missing = row("R7", "H7", "2024-01-17", 0, 0, 0, .3, .5, .7)
+    missing["label_win"] = ""
+    missing["label_top3"] = ""
+    src = put_rows(root, [
+        missing,
+        row("R8", "H8", "2024-01-18", 1, 1, 1, .4, .6, .8),
+    ])
+    meta, windows = offline.provenance(root)
+    result = offline.evaluate_csv(src, meta, windows)
+    assert result["label_issues_by_kind"] == {"TWO_LABELS_BLANK": 1}
