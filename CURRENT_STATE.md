@@ -404,6 +404,65 @@ Interpretation:
 - 2024-2026 deterioration appears across both organizer codes, so it is not explained by a single organizer alone;
 - venue-code-only analysis is insufficient; next probe must resolve venue names and compare matched segments before/after 2024.
 
+## BAOZ-PROBE-009 local evidence — 2026-10-08
+
+Prediction-drift probe completed for 馬券評価順位=1.
+
+### Yearly quality is broadly stable
+
+2019-2026:
+
+- win rate remains roughly 0.30-0.32
+- top2 remains roughly 0.47-0.49
+- top3 remains roughly 0.59-0.62
+- average popularity remains roughly 2.45-2.84
+- favorite-share remains roughly 0.40-0.45
+
+This means the 2024-2026 return-index deterioration observed in P7+ selections is not explained by a broad collapse in rank-1 predictive accuracy.
+
+### Organizer comparison: 2019-2023 vs 2024-2026
+
+- organizer 2: win 0.34 -> 0.34 / top3 0.65 -> 0.64
+- organizer 1: win 0.18 -> 0.17 / top3 0.43 -> 0.42
+
+Only small deterioration.
+
+### Track type
+
+- code 1: win 0.32 -> 0.32 / top3 0.62 -> 0.62
+- code 0: win 0.17 -> 0.17 / top3 0.43 -> 0.42
+- code 2: small sample, no broad degradation
+
+### Field size
+
+Most field-size groups are stable. The clearest weak point is 16+ runners:
+
+- win 0.17 -> 0.14
+- top3 0.40 -> 0.38
+- average popularity 4.21 -> 4.40
+
+### Venue-specific shifts
+
+Notable deterioration:
+- 名古屋: win 0.37 -> 0.32 / top3 0.68 -> 0.63
+- 盛岡: top3 0.66 -> 0.61
+- 門別: win 0.35 -> 0.32 / top3 0.67 -> 0.64
+- 姫路: win 0.35 -> 0.30
+
+Notable improvement:
+- 大井: win 0.25 -> 0.30 / top3 0.52 -> 0.58
+- 佐賀: win 0.37 -> 0.39 / top3 0.67 -> 0.69
+- 函館: win 0.16 -> 0.19 / top3 0.40 -> 0.44
+
+### Interpretation
+
+- The broad rank-1 model did not materially lose predictive accuracy after 2024.
+- Therefore the previously observed longshot return decay is more likely caused by:
+  1. changes in market pricing/odds for the same predictive signal;
+  2. a narrower longshot-specific hit-rate shift not visible in all rank-1 selections;
+  3. venue-mix changes in some segments.
+- Next analysis should compare longshot rank-1 selections before/after 2024 on average odds, realized win rate, winner payout, and implied market probability.
+
 ## Current model/research state
 
 - NEO JIZO baseline: `jockey-25`
