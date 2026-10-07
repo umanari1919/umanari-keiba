@@ -12,6 +12,7 @@ on:
       - "tools/run_neo_jizo_dirt_edge_context_discovery_025.ps1"
       - "tools/neo_jizo_pg_storage_audit_025.ps1"
       - "tools/neo_jizo_core010_offline_evaluation_025.py"
+      - "tools/run_neo_jizo_core010_offline_evaluation_025.ps1"
       - "tests/test_neo_jizo_core010_offline_evaluation_025.py"
       - "docs/NEO_JIZO_DIRT_EDGE_025.md"
       - "NEXT_MISSION.md"
@@ -49,7 +50,8 @@ jobs:
           $errors = $null
           foreach ($file in @(
             "tools/run_neo_jizo_dirt_edge_context_discovery_025.ps1",
-            "tools/neo_jizo_pg_storage_audit_025.ps1"
+            "tools/neo_jizo_pg_storage_audit_025.ps1",
+            "tools/run_neo_jizo_core010_offline_evaluation_025.ps1"
           )) {
             $tokens = $null
             $errors = $null
