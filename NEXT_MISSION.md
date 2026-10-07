@@ -3,7 +3,7 @@
 Mission ID: `NEO-JIZO-DIRT-EDGE-025`
 更新日: 2026-10-08
 Priority: P0
-Status: EVALUATION CORE IMPLEMENTED / LOCAL EVIDENCE PENDING
+Status: OFFLINE EVALUATED / MISSING OUTCOMES QUARANTINED / MARKET COMPARISON BLOCKED
 
 ## Goal
 
@@ -126,3 +126,33 @@ Produce a read-only, time-safe NEO JIZO prediction/result extract matching
 `docs/NEO_JIZO_DIRT_EDGE_025.md`.
 
 Do not run a new BaoZ probe for this step.
+
+
+## Latest 2026-10-08 evidence and next active gate
+
+CORE-010 offline audit complete:
+- 805,095 source rows; 8,573 (1.065%) have **all three result labels blank**.
+- No malformed or inconsistent labels were found among these 8,573.
+- TEST: 992 entirely unlabelled of 96,925 rows; OOS: 1,536 of 91,443.
+- Race-clean sensitivity: TEST top1 win 31.6744%, top2 49.2890%, top3 61.1434%; OOS top1 win 29.5216%, top2 48.9725%, top3 60.9569%.
+- Missing-label reason remains **UNKNOWN** pending race status provenance. Blank values must never be converted to zeroes.
+- Historical split signatures are matched, but the offline output is not a certified contemporaneous pre-race prediction archive.
+
+DB:
+- WSL PostgreSQL 18 executable and PGDATA files exist; 5433 has no live socket; no DB restart or modification attempted.
+- Existing calibrated probability CSV remains available and unmodified.
+
+No further repeated CORE-010 census is needed now. No more BaoZ probes.
+
+### P0: Forward-looking frozen prediction gate
+
+Implement and then verify:
+1. A prediction-only racecard schema excluding result/odds-final fields.
+2. Source provenance and generated-at / real capture-at timestamps, plus expected race start time. Refuse snapshots when no trustworthy pre-start proof is available.
+3. Immutable snapshot SHA-256 and locally recorded freeze receipt; never overwrite.
+4. Result ingestion strictly after freeze, with one-to-one runner/race identity reconciliation and a result-completeness policy that quarantines missing outcomes.
+5. Win/top2/top3 Brier, calibration, top1 accuracy, and JRA/NAR/year breakdown.
+6. Mark results PROSPECTIVE_VERIFIED only when the capture evidence, identity, and completeness gates all pass.
+7. Do not use popularity/odds as independent ability features. Add market comparison only once supported as-of pre-race market data exists.
+
+Do not convert this retrospective CORE-010 evaluation into a 'production-ready' claim. The original 025 BaoZ P7-9 dirt comparison remains BLOCKED pending correctly licensed/evaluated surface/popularity/odds context.
