@@ -53,7 +53,7 @@ def main():
     text = re.sub(re.escape(marker) + r'.*?(?=\n## |\Z)', note.rstrip(), text, flags=re.S) if marker in text else text + '\n\n' + note
     handover.write_text(text, encoding='utf-8')
     start, end = '<!-- PROSPECTIVE_FORECAST_START -->', '<!-- PROSPECTIVE_FORECAST_END -->'
-    section = start + f'<section id="prospective-forecast" style="max-width:1100px;margin:24px auto;padding:20px;background:white;color:#17253a;border-radius:12px"><h2>将来レースの研究予測：{state}</h2><p>履歴組立てと計算を接続しました。過去479,100記録の騎手基準スコアと、2026年36,511記録の3目標確率を再現。保存した履歴の読戻しも確認済みです。</p><p>現在の将来予測：{result["predicted_races"]}レース・{result["predicted_runners"]}記録。履歴のDB確認範囲は{result["history_snapshot_through"]}まで。入力不足や古い履歴では計算を止めます。</p><p>研究用・本番REJECT。結果取得と履歴更新はそれぞれ別工程。将来検証の最終判定、収益性評価は未完了。定期実行は登録していません。</p></section>' + end
+    section = start + f'<section id="prospective-forecast" style="max-width:1100px;margin:24px auto;padding:20px;background:white;color:#17253a;border-radius:12px"><h2>NEO JIZO FORWARD｜将来レースの研究予測：{state}</h2><p>履歴組立てと計算を接続しました。過去479,100記録の騎手基準スコアと、2026年36,511記録の3目標確率を再現。保存した履歴の読戻しも確認済みです。</p><p>現在の将来予測：{result["predicted_races"]}レース・{result["predicted_runners"]}記録。履歴のDB確認範囲は{result["history_snapshot_through"]}まで。入力不足や古い履歴では計算を止めます。</p><p>研究用・本番REJECT。結果取得と履歴更新はそれぞれ別工程。将来検証の最終判定、収益性評価は未完了。定期実行は登録していません。</p></section>' + end
     page = p.ROOT / 'web/index.html'
     html = page.read_text(encoding='utf-8')
     html = re.sub(re.escape(start) + r'.*?' + re.escape(end), section, html, flags=re.S) if start in html else html.replace('</html>', section + '</html>')
