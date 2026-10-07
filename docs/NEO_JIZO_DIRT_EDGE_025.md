@@ -257,3 +257,24 @@ Therefore:
 The context join is one-to-one and fails closed on duplicate or missing keys.
 
 This mission does not require generating a new model before the first benchmark.
+
+## Connection recovery (2026-10-08)
+
+The first local context-discovery attempt failed before the SQL audit with
+`psql.exe` exit code 2 and a suppressed stderr diagnostic. No schema query
+succeeded and no DB modification occurred.
+
+Repair:
+
+- Connect to `127.0.0.1:5433` as the known repository role `postgres`.
+- Keep `-w` (noninteractive); never ask for a password in logs.
+- Force read-only settings on every query and verify them after connecting.
+- If Windows TCP is unavailable, try the existing Ubuntu distribution through
+  its local PostgreSQL Unix socket at `/tmp`, still in read-only mode.
+- Do **not** start/restart/stop PostgreSQL or mutate any local DB or service.
+- If both routes fail, print sanitized per-route PostgreSQL diagnostics and
+  report `READ_ONLY_DB_CONNECTION_BLOCKED` rather than a Python traceback.
+- No connection success is claimed until the local script actually succeeds.
+
+The one-line launcher downloads a commit-pinned Python script. GitHub CI tests
+connection argument safety, read-only state, Windows/WSL fallback and diagnostics.
