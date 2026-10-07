@@ -48,6 +48,7 @@ jobs:
         run: |
           $env:PYTHONPATH = "src"
           python tests/test_weekend_personal_forecast.py
+          python tests/test_weekend_replay.py
           python src/check_weekend_source_status.py
           python src/check_weekend_engine_check.py
           python src/check_weekend_run.py
