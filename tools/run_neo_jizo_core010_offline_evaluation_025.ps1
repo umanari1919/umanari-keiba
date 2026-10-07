@@ -6,7 +6,7 @@ $ErrorActionPreference = 'Stop'
 
 # This launcher never attempts a PostgreSQL connection.
 # It only reads the existing CORE-010 CSV and split sidecars.
-$Commit = '557188ac02c123ff52e76212f6642ae2d9993bcd'
+$Commit = '01bbe1b74b7e0cc7b0b99802d9387d17bebf0ba5'
 $Url = "https://raw.githubusercontent.com/umanari1919/umanari-keiba/$Commit/tools/neo_jizo_core010_offline_evaluation_025.py"
 $Dir = Join-Path $env:TEMP 'JIZO\NEO-JIZO-DIRT-EDGE-025'
 $Py = Join-Path $Dir 'neo_jizo_core010_offline_evaluation_025.py'
