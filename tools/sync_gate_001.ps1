@@ -221,20 +221,20 @@ function Write-SyncReport {
     function LinesOrNone {
         param([object[]]$Lines)
         if (-not $Lines -or $Lines.Count -eq 0) { return @('- (none)') }
-        return @($Lines | ForEach-Object { "- `$_`" })
+        return @($Lines | ForEach-Object { "- $_" })
     }
 
     $md = @(
         '# SYNC-GATE-001 Local Audit',
         '',
-        "- Generated: `$($payload.generated_at)`",
-        "- Repo: `$Path`",
-        "- Branch: `$currentBranch`",
-        "- Local HEAD: `$($relation.LocalHead)`",
-        "- Canonical: `$Remote#$Branch`",
-        "- Canonical HEAD: `$($relation.CanonicalHead)`",
+        "- Generated: $($payload.generated_at)",
+        "- Repo: $Path",
+        "- Branch: $currentBranch",
+        "- Local HEAD: $($relation.LocalHead)",
+        "- Canonical: $Remote#$Branch",
+        "- Canonical HEAD: $($relation.CanonicalHead)",
         "- Relation: **$($relation.Relation)**",
-        "- Ahead / Behind: `$($relation.AheadBy) / $($relation.BehindBy)`",
+        "- Ahead / Behind: $($relation.AheadBy) / $($relation.BehindBy)",
         '',
         '## Tracked changes',
         ''
