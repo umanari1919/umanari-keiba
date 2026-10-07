@@ -41,6 +41,20 @@ function Invoke-GitText {
     }
 }
 
+
+function Test-GitRepo {
+    param([Parameter(Mandatory)][string]$Path)
+    if (-not (Test-Path -LiteralPath $Path -PathType Container)) { return $false }
+    $inside = Invoke-GitText -Path $Path -Arguments @('rev-parse', '--is-inside-work-tree') -AllowFailure
+    return ($inside.Code -eq 0 -and $inside.Text.Trim() -eq 'true')
+}
+
+function Get-RepoRemoteText {
+    param([Parameter(Mandatory)][string]$Path)
+    if (-not (Test-GitRepo -Path $Path)) { return '' }
+    return (Invoke-GitText -Path $Path -Arguments @('remote', '-v') -AllowFailure).Text
+}
+
 function Resolve-NeoJizoRepo {
     param([string]$RequestedPath)
 
@@ -52,24 +66,102 @@ function Resolve-NeoJizoRepo {
     $candidates.Add((Join-Path $HOME 'Documents/Codex/2026-10-06/new-chat/neo-jizo-keiba'))
     if ($env:USERPROFILE) {
         $candidates.Add((Join-Path $env:USERPROFILE 'Documents/Codex/2026-10-06/new-chat/neo-jizo-keiba'))
+        $candidates.Add((Join-Path $env:USERPROFILE 'Downloads/THE-JOCKEY-RESEARCH'))
     }
+
+    foreach ($known in @('C:\dev\The-JOCKEY','C:\dev\THE-JOCKEY','D:\keiba_ai','D:\THE-JOCKEY-RESEARCH','D:\The-JOCKEY')) {
+        $candidates.Add($known)
+    }
+
+    $valid = [System.Collections.Generic.List[string]]::new()
+    $nonGitNamed = [System.Collections.Generic.List[string]]::new()
 
     foreach ($candidate in ($candidates | Select-Object -Unique)) {
         if (-not $candidate) { continue }
         if (-not (Test-Path -LiteralPath $candidate -PathType Container)) { continue }
 
-        $inside = Invoke-GitText -Path $candidate -Arguments @('rev-parse', '--is-inside-work-tree') -AllowFailure
-        if ($inside.Code -eq 0 -and $inside.Text.Trim() -eq 'true') {
-            return (Resolve-Path -LiteralPath $candidate).Path
+        $resolved = (Resolve-Path -LiteralPath $candidate).Path
+        if (Test-GitRepo -Path $resolved) {
+            $valid.Add($resolved)
+        }
+        elseif ((Split-Path -Leaf $resolved) -match 'neo-jizo-keiba|the-jockey|keiba_ai') {
+            $nonGitNamed.Add($resolved)
         }
     }
 
-    throw @"
-neo-jizo-keiba Git repository was not found.
-Specify it explicitly:
-  ./tools/sync_gate_001.ps1 -RepoPath 'C:\path\to\neo-jizo-keiba'
-or set NEO_JIZO_KEIBA_ROOT.
-"@
+    $searchRoots = [System.Collections.Generic.List[string]]::new()
+    if ($env:USERPROFILE) {
+        $searchRoots.Add((Join-Path $env:USERPROFILE 'Documents/Codex'))
+        $searchRoots.Add((Join-Path $env:USERPROFILE 'Downloads'))
+    }
+    $searchRoots.Add('C:\dev')
+
+    foreach ($root in ($searchRoots | Select-Object -Unique)) {
+        if (-not (Test-Path -LiteralPath $root -PathType Container)) { continue }
+        try {
+            Get-ChildItem -LiteralPath $root -Directory -Filter '.git' -Recurse -Depth 8 -Force -ErrorAction SilentlyContinue |
+                ForEach-Object {
+                    $parent = $_.Parent.FullName
+                    if ($parent -and -not $valid.Contains($parent)) {
+                        $valid.Add($parent)
+                    }
+                }
+        }
+        catch {
+        }
+    }
+
+    $valid = @($valid | Select-Object -Unique)
+
+    if ($RequestedPath) {
+        $requestedResolved = if (Test-Path -LiteralPath $RequestedPath -PathType Container) {
+            (Resolve-Path -LiteralPath $RequestedPath).Path
+        } else { $null }
+        if ($requestedResolved -and (Test-GitRepo -Path $requestedResolved)) {
+            return $requestedResolved
+        }
+    }
+
+    $remoteMatches = @()
+    foreach ($repo in $valid) {
+        $remoteText = Get-RepoRemoteText -Path $repo
+        if ($remoteText -match 'github\.com[/:]umanari1919/umanari-keiba(?:\.git)?') {
+            $remoteMatches += $repo
+        }
+    }
+    if ($remoteMatches.Count -eq 1) {
+        return $remoteMatches[0]
+    }
+
+    $named = @($valid | Where-Object { (Split-Path -Leaf $_) -ieq 'neo-jizo-keiba' })
+    if ($named.Count -eq 1) {
+        return $named[0]
+    }
+
+    $lines = [System.Collections.Generic.List[string]]::new()
+    $lines.Add('neo-jizo-keiba Git repository could not be selected safely.')
+    if ($nonGitNamed.Count -gt 0) {
+        $lines.Add('')
+        $lines.Add('Named project folders found, but they are not Git repositories:')
+        foreach ($p0 in ($nonGitNamed | Select-Object -Unique | Select-Object -First 10)) {
+            $lines.Add("  NON_GIT  $p0")
+        }
+    }
+    if ($valid.Count -gt 0) {
+        $lines.Add('')
+        $lines.Add('Git repositories discovered:')
+        foreach ($repo in ($valid | Select-Object -First 20)) {
+            $remote = Get-RepoRemoteText -Path $repo
+            $firstRemote = @($remote.Split([Environment]::NewLine) | Where-Object { $_ } | Select-Object -First 1)
+            if ($firstRemote.Count -eq 0) { $firstRemote = @('(no remote)') }
+            $lines.Add("  GIT      $repo")
+            $lines.Add("           $($firstRemote[0])")
+        }
+    }
+    $lines.Add('')
+    $lines.Add('Re-run with -RepoPath only if a repository must be selected explicitly.')
+
+    throw ($lines -join [Environment]::NewLine)
 }
 
 function Get-GitRelation {
@@ -291,6 +383,10 @@ function Invoke-SelfTest {
 
         $same = Join-Path $root 'same'
         & git clone -q $canonical $same
+        $resolvedSame = Resolve-NeoJizoRepo -RequestedPath $same
+        if ((Resolve-Path -LiteralPath $resolvedSame).Path -ne (Resolve-Path -LiteralPath $same).Path) {
+            throw 'Explicit repository resolution failed.'
+        }
         $rSame = Get-GitRelation -Path $same -Remote $canonical -Branch 'main'
         if ($rSame.Relation -ne 'same') { throw "Expected same, got $($rSame.Relation)" }
 
