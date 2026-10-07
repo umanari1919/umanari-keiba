@@ -100,13 +100,28 @@ def run_psql(
         # or restart the PostgreSQL service. The Unix socket is local-trust
         # in the previously audited cluster and does not require TCP forwarding.
         shell = (
-            'export PGCONNECT_TIMEOUT=4 PGCLIENTENCODING=UTF8 '
+            'export LC_ALL=C PGCONNECT_TIMEOUT=4 PGCLIENTENCODING=UTF8 '
             'PGOPTIONS="-c default_transaction_read_only=on -c statement_timeout=120000"; '
-            'psql_bin="$HOME/.keiba_ai/postgres18/bin/psql"; '
-            'if [ ! -x "$psql_bin" ]; then psql_bin="$(command -v psql)"; fi; '
-            'if [ -z "$psql_bin" ]; then echo "WSL psql not found" >&2; exit 127; fi; '
+            'psql_bin=""; '
+            'for candidate in "$HOME"/.keiba_ai/postgres18/bin/psql '
+            '/home/*/.keiba_ai/postgres18/bin/psql '
+            '/root/.keiba_ai/postgres18/bin/psql '
+            '/usr/bin/psql /usr/local/bin/psql; do '
+            'if [ -x "$candidate" ]; then psql_bin="$candidate"; break; fi; done; '
+            'if [ -z "$psql_bin" ]; then psql_bin="$(command -v psql 2>/dev/null || true)"; fi; '
+            'if [ -z "$psql_bin" ]; then '
+            'echo "WSL PostgreSQL client missing in expected locations" >&2; '
+            'echo "Checked: HOME/.keiba_ai, /home/*/.keiba_ai, /root/.keiba_ai, system PATH" >&2; '
+            'exit 127; fi; '
+            'socket_dir=""; '
+            'for dir in /tmp /var/run/postgresql /run/postgresql; do '
+            'if [ -S "$dir/.s.PGSQL.$1" ]; then socket_dir="$dir"; break; fi; done; '
+            'if [ -z "$socket_dir" ]; then '
+            'echo "WSL psql found, but no live-looking PostgreSQL socket on port $1" >&2; '
+            'echo "Checked /tmp, /var/run/postgresql, /run/postgresql; no server was started" >&2; '
+            'exit 69; fi; '
             'exec "$psql_bin" -X -w -v ON_ERROR_STOP=1 '
-            '-h /tmp -p "$1" -U postgres -d "$2" -At -f -'
+            '-h "$socket_dir" -p "$1" -U postgres -d "$2" -At -f -'
         )
         command = [wsl, "-d", "Ubuntu", "--", "bash", "-lc", shell, "_", port, db]
     else:
