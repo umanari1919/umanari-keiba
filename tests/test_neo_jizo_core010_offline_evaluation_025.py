@@ -177,3 +177,66 @@ def test_float_race_scope_and_raw_score_break_calibrated_ties(tmp_path: Path) ->
     )
     assert oos["model_top1"]["win"]["actual_rate"] == 1
     assert report["status"] == "HOLDOUT_CONTRACT_MATCHED"
+
+
+
+def test_invalid_oos_race_excluded_from_clean_sensitivity(tmp_path: Path) -> None:
+    root = make_root(tmp_path)
+    bad = row("R_OOS_BAD", "H2", "2024-01-06", 0, 0, 0, .8, .9, 1.0)
+    bad["p_win_cal"] = "nan"
+    src = put_rows(root, [
+        row("R_OOS_BAD", "H1", "2024-01-06", 1, 1, 1, .6, .7, .8),
+        bad,
+        row("R_OOS_CLEAN", "H3", "2024-01-07", 1, 1, 1, .5, .7, .8),
+        row("R_OOS_CLEAN", "H4", "2024-01-07", 0, 1, 1, .2, .4, .5),
+    ])
+    meta, windows = offline.provenance(root)
+    output = offline.evaluate_csv(src, meta, windows)
+
+    assert output["status"] == "PARTIAL_INVALID_ROWS"
+    assert output["invalid_rows_total"] == 1
+    assert output["invalid_row_reasons"]["INVALID_OR_NONMONOTONIC_PROBABILITIES"] == 1
+    assert output["invalid_rows_by_split"]["OOS"] == 1
+    assert output["known_invalid_test_oos_rows"] == 1
+    clean = output["clean_race_sensitivity"]
+    assert clean is not None
+    assert clean["excluded_unique_race_ids"] == 1
+    summary = next(
+        item for item in clean["by_split_scope"]
+        if item["split"] == "OOS" and item["organizer"] == "ALL"
+    )
+    assert summary["all_runners"] == 2
+    assert summary["model_top1"] == 1
+    assert summary["model_top1_rates"]["win"] == 1
+
+
+def test_invalid_train_row_does_not_discard_holdout_cleanliness(tmp_path: Path) -> None:
+    root = make_root(tmp_path)
+    bad = row("R_TRAIN", "H0", "2019-01-03", 1, 1, 1, .8, .9, 1.0)
+    bad["label_win"] = ""
+    src = put_rows(root, [
+        bad,
+        row("R_OOS", "H1", "2024-01-07", 1, 1, 1, .5, .7, .8),
+    ])
+    meta, windows = offline.provenance(root)
+    output = offline.evaluate_csv(src, meta, windows)
+    assert output["invalid_rows_total"] == 1
+    assert output["invalid_rows_by_split"] == {"TRAIN": 1}
+    assert output["known_invalid_test_oos_rows"] == 0
+    assert output["clean_race_sensitivity"] is None
+    assert output["status"] == "PARTIAL_INVALID_ROWS"
+
+
+def test_invalid_unknown_date_requires_sensitivity(tmp_path: Path) -> None:
+    root = make_root(tmp_path)
+    bad = row("R_DATE", "H1", "not-a-date", 1, 1, 1, .8, .9, 1.0)
+    src = put_rows(root, [
+        bad,
+        row("R_DATE", "H2", "2024-01-08", 0, 0, 0, .2, .4, .6),
+    ])
+    meta, windows = offline.provenance(root)
+    output = offline.evaluate_csv(src, meta, windows)
+    assert output["invalid_rows_by_split"]["UNKNOWN_DATE"] == 1
+    assert output["clean_race_sensitivity"]["excluded_unique_race_ids"] == 1
+    assert output["clean_race_sensitivity"]["remaining_test_oos_races"] == 0
+    assert output["status"] == "PARTIAL_INVALID_ROWS"
