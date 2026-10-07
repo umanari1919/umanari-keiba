@@ -740,6 +740,62 @@ Required next checks:
 
 Until this gate passes, the 2024 dirt-longshot regime shift remains a descriptive observation, not a causal model diagnosis.
 
+## BAOZ-PROBE-014 local evidence — 2026-10-08
+
+Temporal-integrity probe completed.
+
+### Strong pre-result evidence
+
+Future race-card rows after the 2026-10-08 cutoff:
+
+- runner rows: 536
+- rank non-null: 536
+- rank=1 rows: 55
+- score non-null: 536
+- finish zero/unresolved: 536
+- finish-zero rows with rank non-null: 536
+
+This proves BaoZ can generate rank and score values before final results exist.
+
+### Historical unresolved rows
+
+- unresolved/zero-finish rows in 2012..cutoff: 31,539
+- rank non-null among them: 17,240
+- rank=1: 872
+
+These are compatible with pre-result/pre-final states, but may include scratches, cancellations, or other abnormal-result records and are not by themselves a clean contemporaneous-history proof.
+
+### Source creation date is not prediction timestamp
+
+Among rank-bearing historical runner rows:
+
+- source creation before race date: 696
+- same day: 1,784,774
+- after race date: 889,292
+- missing: 0
+
+JRA-VAN documentation describes JV-Data as being supplied by record type and data creation date, and advises applying the newer data-creation-date version. Therefore BaoZ `データ作成年月日` must not be interpreted as a prediction-computation timestamp.
+
+### CS / CR
+
+- CS rows: 0
+- CR rows: 0
+
+These tables provide no temporal evidence in the current installation.
+
+### Temporal-integrity status
+
+PARTIAL PASS:
+
+- PASS: rank/score can exist pre-result.
+- UNRESOLVED: whether each historical rank was calculated contemporaneously using only the information state available at that historical race date, or recomputed/backfilled later.
+- Therefore historical performance remains a retrospective evaluation, not yet a certified archived-forecast backtest.
+
+Next gate:
+
+- inspect prediction/calculation/provenance-related schema fields and prediction-computed flags;
+- determine whether BaoZ stores a calculation timestamp, settings/version identifier, or other evidence that distinguishes contemporaneous predictions from later recomputation.
+
 ## Current model/research state
 
 - NEO JIZO baseline: `jockey-25`
