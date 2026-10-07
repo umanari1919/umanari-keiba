@@ -3,7 +3,7 @@
 Mission ID: `SYNC-GATE-001`
 更新日: 2026-10-07
 Priority: P0
-Status: READY / LOCAL ACCESS REQUIRED
+Status: RUNNER READY / LOCAL EXECUTION REQUIRED
 
 ## 目的
 
@@ -16,6 +16,20 @@ GitHubには2026-10-04までの開発履歴がある一方、
 2026-10-06のローカル作業で扱っていた `jockey-25`、3目標評価、調教48候補などがGitHubで確認できていない。
 
 この状態でGitHub側だけを最新として機能実装すると、ローカルの新しい成果を上書き・取りこぼす危険がある。
+
+## 実行方法
+
+PowerShell 7で次の1行だけ実行する。
+
+```powershell
+$u='https://raw.githubusercontent.com/umanari1919/umanari-keiba/main/tools/sync_gate_001.ps1'; $p=Join-Path $env:TEMP 'sync_gate_001.ps1'; Invoke-WebRequest $u -OutFile $p; & $p
+```
+
+既知の既定パス `C:\Users\uchih\Documents\Codex\2026-10-06\new-chat\neo-jizo-keiba` を自動探索する。
+見つからない場合だけ `-RepoPath` を明示する。
+
+実行後はコンソール末尾の `SYNC-GATE-001 COMPLETE` ブロックだけを通常ChatGPTへ渡せばよい。
+長大なログやZIPは不要。
 
 ## このMissionで確認するもの
 

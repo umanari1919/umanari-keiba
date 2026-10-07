@@ -23,7 +23,7 @@ GitHub ActionsはUbuntu/Windows、Python 3.13/3.14でmodern-stackの品質ゲー
 
 ## 重要: ローカル最新版との同期状態
 
-状態: **UNVERIFIED**
+状態: **UNVERIFIED / AUDIT RUNNER READY**
 
 2026-10-06までローカル側では `neo-jizo-keiba` 作業が進んでいたが、その最新内容がこのGitHub mainへ完全同期済みとは確認できていない。
 
@@ -49,3 +49,14 @@ DB作業は原則READ ONLY。
 GitHubとローカル `neo-jizo-keiba` の差分を確定し、どちらが正規最新版かを安全に統合する。
 
 詳細は `NEXT_MISSION.md` を参照。
+
+
+## 2026-10-07 省トークン運用基盤
+
+- PR #36: GitHub本社化の引き継ぎ基盤をmainへ統合
+- PR #37: `tools/sync_gate_001.ps1` と専用CIをmainへ統合
+- PR #37 merge commit: `ee45cdf218caba3cf72888d4729b39e3e581e878`
+- `sync-gate-001` self-test: Windows / Linux PASS
+- `modern-stack-quality`: Ubuntu/Windows × Python 3.13/3.14 PASS
+
+ローカル最新版との関係そのものは、ローカル監査ランナーを1回実行するまで未確定。
