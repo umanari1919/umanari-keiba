@@ -15,6 +15,7 @@ import json
 import os
 import shutil
 import subprocess
+import sys
 from pathlib import Path
 from typing import Any
 
@@ -40,7 +41,8 @@ TRACK_PATTERNS = ("track", "トラック", "surface", "芝", "ダート")
 DATE_PATTERNS = ("kaisai_nen", "race_date", "年月日", "date")
 
 
-def find_psql() -> str:
+def find_psql() -> str | None:
+    """Windows client is optional when the WSL-local socket works."""
     candidates = [
         shutil.which("psql"),
         r"C:\Program Files\PostgreSQL\18\bin\psql.exe",
@@ -48,45 +50,113 @@ def find_psql() -> str:
         r"C:\Program Files\PostgreSQL\16\bin\psql.exe",
     ]
     for candidate in candidates:
-        if candidate and Path(candidate).exists():
+        if candidate and Path(candidate).is_file():
             return str(candidate)
-    raise FileNotFoundError("psql not found")
+    return None
 
 
-def run_psql(psql: str, sql: str, *, host: str, port: str, db: str) -> str:
+def _safe_error(message: str) -> str:
+    """Show an actionable PostgreSQL diagnostic, not SQL or secrets."""
+    detail = (message or "No diagnostic returned by psql").strip()
+    password = os.environ.get("PGPASSWORD")
+    if password:
+        detail = detail.replace(password, "<redacted>")
+    return detail[:1200]
+
+
+def run_psql(
+    psql: str | None,
+    sql: str,
+    *,
+    backend: str,
+    host: str,
+    port: str,
+    db: str,
+) -> str:
     env = os.environ.copy()
-    env.setdefault("PGOPTIONS", "-c default_transaction_read_only=on -c statement_timeout=180000")
-    command = [
-        psql,
-        "-X",
-        "-v",
-        "ON_ERROR_STOP=1",
-        "-h",
-        host,
-        "-p",
-        port,
-        "-d",
-        db,
-        "-At",
-        "-c",
-        sql,
-    ]
-    completed = subprocess.run(
-        command,
-        check=True,
-        capture_output=True,
-        text=True,
-        encoding="utf-8",
-        errors="replace",
-        env=env,
+    env.update(
+        PGCONNECT_TIMEOUT="4",
+        PGCLIENTENCODING="UTF8",
     )
-    return completed.stdout.strip()
+    safe_options = "-c default_transaction_read_only=on -c statement_timeout=120000"
+    env["PGOPTIONS"] = (env.get("PGOPTIONS", "") + " " + safe_options).strip()
+
+    if backend == "windows_tcp":
+        if not psql:
+            raise RuntimeError("Windows psql.exe is not installed")
+        # -U postgres matches the existing repository's known read-only query path.
+        # -w refuses an interactive password prompt. Use a preconfigured pgpass/
+        # PGPASSWORD; no password is generated, logged or written here.
+        command = [
+            psql, "-X", "-w", "-v", "ON_ERROR_STOP=1",
+            "-h", host, "-p", port, "-U", "postgres",
+            "-d", db, "-At", "-f", "-",
+        ]
+    elif backend == "wsl_socket":
+        wsl = shutil.which("wsl.exe") or shutil.which("wsl")
+        if not wsl:
+            raise RuntimeError("WSL command is unavailable")
+        # Ubuntu is an existing, user-owned distribution. Do not start, stop
+        # or restart the PostgreSQL service. The Unix socket is local-trust
+        # in the previously audited cluster and does not require TCP forwarding.
+        shell = (
+            'export PGCONNECT_TIMEOUT=4 PGCLIENTENCODING=UTF8 '
+            'PGOPTIONS="-c default_transaction_read_only=on -c statement_timeout=120000"; '
+            'psql_bin="$HOME/.keiba_ai/postgres18/bin/psql"; '
+            'if [ ! -x "$psql_bin" ]; then psql_bin="$(command -v psql)"; fi; '
+            'if [ -z "$psql_bin" ]; then echo "WSL psql not found" >&2; exit 127; fi; '
+            'exec "$psql_bin" -X -w -v ON_ERROR_STOP=1 '
+            '-h /tmp -p "$1" -U postgres -d "$2" -At -f -'
+        )
+        command = [wsl, "-d", "Ubuntu", "--", "bash", "-lc", shell, "_", port, db]
+    else:
+        raise ValueError("Unsupported connection backend")
+
+    try:
+        result = subprocess.run(
+            command, input=sql + "\n", check=False, capture_output=True,
+            text=True, encoding="utf-8", errors="replace", env=env,
+            timeout=130,
+        )
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        raise RuntimeError(f"{backend} invocation failure: {type(exc).__name__}") from None
+
+    if result.returncode != 0:
+        raise RuntimeError(
+            f"{backend} psql exit={result.returncode}: {_safe_error(result.stderr)}"
+        )
+    return result.stdout.strip()
 
 
-def query_json(psql: str, sql: str, **kwargs: str) -> Any:
-    text = run_psql(psql, f"SELECT coalesce(json_agg(x),'[]'::json) FROM ({sql}) x", **kwargs)
-    return json.loads(text or "[]")
+def query_json(psql: str | None, sql: str, **kwargs: str) -> Any:
+    raw = run_psql(psql, f"SELECT coalesce(json_agg(x),'[]'::json) FROM ({sql}) x", **kwargs)
+    return json.loads(raw or "[]")
 
+
+def connect_read_only(psql: str | None, *, host: str, port: str, db: str) -> tuple[str, dict[str, str]]:
+    probe_sql = """
+        SELECT current_setting('transaction_read_only') AS transaction_read_only,
+               current_setting('default_transaction_read_only') AS default_transaction_read_only,
+               current_database() AS database_name
+    """
+    diagnostics: list[str] = []
+    for backend in ("windows_tcp", "wsl_socket"):
+        try:
+            state = query_json(
+                psql, probe_sql, backend=backend, host=host, port=port, db=db
+            )
+            if not state or state[0].get("transaction_read_only") != "on":
+                diagnostics.append(f"{backend}: read-only verification failed")
+                continue
+            return backend, state[0]
+        except (RuntimeError, ValueError, json.JSONDecodeError) as exc:
+            diagnostics.append(f"{backend}: {_safe_error(str(exc))}")
+
+    raise RuntimeError(
+        "READ_ONLY_DB_CONNECTION_BLOCKED\n"
+        + "\n".join(diagnostics)
+        + "\nNo service was started or stopped; no DB changes were made."
+    )
 
 def classify(name: str) -> list[str]:
     lower = name.lower()
@@ -160,18 +230,14 @@ def main() -> int:
         "port": str(args.port),
         "db": args.db,
     }
-
-    state = query_json(
-        psql,
-        """
-        SELECT current_setting('transaction_read_only') AS transaction_read_only,
-               current_setting('default_transaction_read_only') AS default_transaction_read_only,
-               current_database() AS database_name
-        """,
-        **conn,
-    )
-    if not state or state[0].get("transaction_read_only") != "on":
-        raise RuntimeError("read-only connection gate failed")
+    try:
+        backend, connection_state = connect_read_only(psql, **conn)
+    except RuntimeError as exc:
+        # A connection problem must not be confused with malformed SQL.
+        print(str(exc), file=sys.stderr)
+        return 2
+    conn["backend"] = backend
+    print(f"Read-only PostgreSQL route: {backend}", flush=True)
 
     columns = query_json(
         psql,
@@ -260,7 +326,8 @@ def main() -> int:
             "horse_rows_output": False,
             "metadata_aggregate_only": True,
         },
-        "connection": state[0],
+        "connection": connection_state,
+        "connection_backend": backend,
         "probability_file": str(probability_path) if probability_path else None,
         "probability_header": header,
         "known_core_tables": known,
