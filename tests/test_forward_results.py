@@ -114,6 +114,17 @@ class ResultAdapterTests(unittest.TestCase):
         self.assertEqual(standardized[0]["result_status"], "UNRESOLVED")
         self.assertIsNone(standardized[0]["finish_position"])
 
+    def test_null_result_fields_are_unresolved_not_negative(self):
+        raw = [{"race_id": self.fixt.rid, "horse_id": "2020000001",
+                "finish_position": None, "abnormal_code": None}]
+        rows = result.normalize(raw, [self.fixt.rid])
+        self.assertEqual(rows[0]["result_status"], "UNRESOLVED")
+        self.assertIsNone(rows[0]["finish_position"])
+        self.rows[1].update(finish_position=None, abnormal_code=None)
+        summary = self.collect()
+        self.assertEqual(summary["status"], "QUARANTINED")
+        self.assertEqual(summary["scored_races"], 0)
+
     def test_sql_injection_and_wrong_scopes_rejected(self):
         for rid in ("1'; DROP TABLE;--", "abc", "１２３４５６７８９０１２３４５６"):
             with self.subTest(rid=rid):
