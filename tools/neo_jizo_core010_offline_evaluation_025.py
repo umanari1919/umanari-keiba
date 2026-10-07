@@ -321,6 +321,66 @@ def _lift(selected: Aggregate, base: Aggregate, target_index: int) -> float | No
     )
 
 
+def _scope_mix_comparison(report: list[dict[str, Any]]) -> dict[str, Any]:
+    """Direct standardization using TEST top1 JRA/NAR shares as fixed weights.
+
+    This descriptive decomposition is not a significance test or causal proof.
+    It never imputes absent markets, surfaces, or missing observations.
+    """
+    index = {
+        (item["split"], item["year"], item["organizer"]): item
+        for item in report
+    }
+    required_keys = [
+        (split, "ALL", scope)
+        for split in ("TEST", "OOS")
+        for scope in ("ALL", "JRA", "NAR")
+    ]
+    if any(key not in index for key in required_keys):
+        return {"available": False, "reason": "TEST/OOS JRA/NAR aggregates unavailable"}
+
+    test_jra = index["TEST", "ALL", "JRA"]["model_top1"]
+    test_nar = index["TEST", "ALL", "NAR"]["model_top1"]
+    oos_jra = index["OOS", "ALL", "JRA"]["model_top1"]
+    oos_nar = index["OOS", "ALL", "NAR"]["model_top1"]
+    test_all = index["TEST", "ALL", "ALL"]["model_top1"]
+    oos_all = index["OOS", "ALL", "ALL"]["model_top1"]
+    if not all(x["n"] > 0 for x in (test_jra, test_nar, oos_jra, oos_nar)):
+        return {"available": False, "reason": "No top1 horses in one or more organizer-split cells"}
+
+    weight_jra = test_jra["n"] / test_all["n"]
+    weight_nar = test_nar["n"] / test_all["n"]
+    out: dict[str, Any] = {
+        "available": True,
+        "reference_weight": "TEST model-top1 JRA/NAR shares",
+        "test_top1_jra_share": weight_jra,
+        "test_top1_nar_share": weight_nar,
+        "oos_top1_jra_share": oos_jra["n"] / oos_all["n"],
+        "oos_top1_nar_share": oos_nar["n"] / oos_all["n"],
+        "interpretation": (
+            "Direct standardization at fixed TEST scope mix; descriptive, "
+            "not causal or statistically adjusted beyond JRA/NAR."
+        ),
+        "targets": {},
+    }
+    for target in TARGETS:
+        observed_test = test_all[target]["actual_rate"]
+        observed_oos = oos_all[target]["actual_rate"]
+        adjusted_oos = (
+            weight_jra * oos_jra[target]["actual_rate"]
+            + weight_nar * oos_nar[target]["actual_rate"]
+        )
+        out["targets"][target] = {
+            "test_observed_rate": observed_test,
+            "oos_observed_rate": observed_oos,
+            "oos_at_test_scope_mix_rate": adjusted_oos,
+            "unadjusted_change_pp": (observed_oos - observed_test) * 100,
+            "scope_standardized_change_pp": (adjusted_oos - observed_test) * 100,
+            "scope_composition_contribution_pp": (observed_oos - adjusted_oos) * 100,
+        }
+    return out
+
+
 def evaluate_csv(csv_path: Path, provenance_info: dict[str, Any], windows: list[tuple[str, date, date]]) -> dict[str, Any]:
     # The only official evaluation splits. Diagnostics are never upgraded to
     # official OOS regardless of apparent accuracy.
@@ -456,6 +516,7 @@ def evaluate_csv(csv_path: Path, provenance_info: dict[str, Any], windows: list[
         "clean_race_sensitivity": clean_sensitivity,
         "races_with_top1": len(leaders),
         "by_split_year_scope": report,
+        "scope_mix_comparison": _scope_mix_comparison(report),
         "safety": {
             "database_accessed": False,
             "database_modified": False,
@@ -539,6 +600,23 @@ def main() -> int:
                 f"top1={k['actual_rate'] if k['actual_rate'] is not None else 'NA'} "
                 f"brier={v['brier']:.6f} calGap={v['calibration_gap_pp']:.3f}pt "
                 f"lift={entry['top1_lift_vs_all_runners'][target]}"
+            )
+    comparison = result["scope_mix_comparison"]
+    if comparison["available"]:
+        print("--- JRA/NAR MIX STANDARDIZATION (TEST TOP1 WEIGHTS) ---")
+        print(
+            "NAR top1 share: "
+            f"TEST={comparison['test_top1_nar_share']:.2%} "
+            f"OOS={comparison['oos_top1_nar_share']:.2%}"
+        )
+        for target in TARGETS:
+            row = comparison["targets"][target]
+            print(
+                f"  {target}: TEST={row['test_observed_rate']:.3%} "
+                f"OOS={row['oos_observed_rate']:.3%} "
+                f"OOS at TEST mix={row['oos_at_test_scope_mix_rate']:.3%} "
+                f"rawDelta={row['unadjusted_change_pp']:+.3f}pt "
+                f"mixAdjustedDelta={row['scope_standardized_change_pp']:+.3f}pt"
             )
     print(f"Output (aggregates only): {output}")
     print("Source CSV and PostgreSQL untouched.")
