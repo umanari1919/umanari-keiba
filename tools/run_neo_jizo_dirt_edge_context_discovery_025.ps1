@@ -4,7 +4,7 @@ param()
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
-$Commit = '691ff2726f3e28821a94855f249a59757f7a7c6c'
+$Commit = '640611f9e2c9f7477360aa489d785ac05f9bbbac'
 $Url = "https://raw.githubusercontent.com/umanari1919/umanari-keiba/$Commit/tools/neo_jizo_dirt_edge_context_discovery_025.py"
 $Dir = Join-Path $env:TEMP 'JIZO\NEO-JIZO-DIRT-EDGE-025'
 $Py = Join-Path $Dir 'neo_jizo_dirt_edge_context_discovery_025.py'
