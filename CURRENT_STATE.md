@@ -200,6 +200,49 @@ Rank=1 counts:
 - `BaoZ.ex.mdb` and `BaoZ.mdb` runner aggregates are identical, so they must not be double-counted.
 - Before mapping GUI marks, compare the six available ranking definitions directly on the same valid historical population.
 
+## BAOZ-PROBE-005 local evidence — 2026-10-08
+
+Aggregate rank baseline completed on the untouched BaoZ baseline.
+
+Population:
+
+- cutoff: 2026-10-08
+- valid runner rows: 3,189,965
+- valid races: 283,878
+- valid date range: 1999-06-16 .. 2026-10-07
+- zero-finish rows: 36,692
+- sentinel-date rows: 2
+- future rows: 536
+
+Rank-1 headline metrics:
+
+| rank definition | win | top2 | top3 | win index | place index |
+|---|---:|---:|---:|---:|---:|
+| 予想タイム指数順位 | 35.48% | 54.62% | 67.07% | 86.598 | 88.775 |
+| 馬券評価順位 | 31.01% | 48.56% | 60.60% | 90.757 | 90.173 |
+| 得点V1順位 | 33.40% | 51.66% | 63.56% | 87.780 | 88.538 |
+| 得点V2順位 | 30.74% | 47.36% | 58.62% | 91.522 | 89.101 |
+| デフォルト得点順位 | 33.94% | 52.84% | 65.32% | 88.381 | 89.633 |
+| 得点V3順位 | 31.01% | 48.54% | 60.59% | 90.763 | 90.168 |
+| 市場1番人気 | 40.81% | 60.82% | 72.73% | 78.302 | 87.002 |
+
+Interpretation:
+
+- Market popularity is substantially stronger for raw hit-rate.
+- BaoZ rank-1 selections have materially higher provisional win return indices than market favorite.
+- 予想タイム指数順位 is the strongest pure hit-rate rank among the six candidates.
+- 得点V2順位 is the strongest provisional win-return rank.
+- 馬券評価順位 and 得点V3順位 are nearly numerically identical and may be redundant; exact agreement must be tested.
+- No rank definition is above 100 on the unconditional provisional win/place return index. Standard rank-1 flat betting is therefore not yet profitable in aggregate.
+- GUI mark mapping remains unresolved and is not inferred from these ranks.
+
+Next:
+
+- cross-tab each rank-1 selection by actual popularity band;
+- measure overlap with market favorite;
+- test exact agreement/redundancy among ranking definitions;
+- preserve aggregate-only output.
+
 ## Current model/research state
 
 - NEO JIZO baseline: `jockey-25`
