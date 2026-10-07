@@ -24,7 +24,7 @@ TARGETS = ("win", "top2", "top3")
 REQUIRED = {
     "race_id", "race_horse_id", "race_date", "race_scope_cd",
     "label_win", "label_top2", "label_top3",
-    "p_win_cal", "p_top2_cal", "p_top3_cal",
+    "p_win", "p_win_cal", "p_top2_cal", "p_top3_cal",
 }
 SPLITS = ("TRAIN", "VALIDATION", "SELECTION", "TEST", "OOS")
 
@@ -148,12 +148,14 @@ def _value(row: dict[str, str], name: str) -> str:
     return str(row.get(name) or "").strip()
 
 
-def parse(row: dict[str, str]) -> tuple[date, str, str, str, tuple[int, int, int], tuple[float, float, float]]:
+def parse(row: dict[str, str]) -> tuple[date, str, str, str, tuple[int, int, int], tuple[float, float, float], float]:
     rid, horse = _value(row, "race_id"), _value(row, "race_horse_id")
     if not rid or not horse:
         raise ValueError("missing unique key")
     dt = date.fromisoformat(_value(row, "race_date")[:10])
-    scope = {"1": "JRA", "2": "NAR"}.get(_value(row, "race_scope_cd"))
+    raw_scope = _value(row, "race_scope_cd")
+    scope_number = float(raw_scope)
+    scope = {1.0: "JRA", 2.0: "NAR"}.get(scope_number)
     if not scope:
         raise ValueError("invalid race_scope_cd")
     raw_labels = tuple(float(_value(row, f"label_{t}")) for t in TARGETS)
@@ -167,7 +169,10 @@ def parse(row: dict[str, str]) -> tuple[date, str, str, str, tuple[int, int, int
         raise ValueError("invalid probability")
     if not probs[0] <= probs[1] <= probs[2]:
         raise ValueError("non-monotonic predicted targets")
-    return dt, scope, rid, horse, labels, probs
+    ranking_score = float(_value(row, "p_win"))
+    if not math.isfinite(ranking_score) or not 0 <= ranking_score <= 1:
+        raise ValueError("invalid raw win score")
+    return dt, scope, rid, horse, labels, probs, ranking_score
 
 
 def split_for_day(day: date, windows: list[tuple[str, date, date]]) -> str:
@@ -189,7 +194,7 @@ def evaluate_csv(csv_path: Path, provenance_info: dict[str, Any], windows: list[
     # The only official evaluation splits. Diagnostics are never upgraded to
     # official OOS regardless of apparent accuracy.
     aggregate: dict[tuple[str, int, str, str], Aggregate] = defaultdict(Aggregate)
-    leaders: dict[tuple[str, str], tuple[float, str, int, str, tuple[int, int, int], tuple[float, float, float]]] = {}
+    leaders: dict[tuple[str, str], tuple[float, float, str, int, str, tuple[int, int, int], tuple[float, float, float]]] = {}
     seen: set[tuple[str, str]] = set()
     row_counts: dict[str, int] = defaultdict(int)
     invalid_types: dict[str, int] = defaultdict(int)
@@ -203,7 +208,7 @@ def evaluate_csv(csv_path: Path, provenance_info: dict[str, Any], windows: list[
         for raw in reader:
             total_rows += 1
             try:
-                dt, scope, race, horse, labels, probs = parse(raw)
+                dt, scope, race, horse, labels, probs, raw_score = parse(raw)
             except (ValueError, TypeError, OverflowError, KeyError) as exc:
                 invalid_types[type(exc).__name__] += 1
                 continue
@@ -225,14 +230,19 @@ def evaluate_csv(csv_path: Path, provenance_info: dict[str, Any], windows: list[
                     aggregate[dimensions].add(labels, probs)
                 rkey = (part, race)
                 current = leaders.get(rkey)
-                # Tie-break deterministic by runner ID, never by popularity/outcome.
+                # Isotonic calibration can create ties; use the original
+                # pre-calibration win score before deterministic runner ID.
+                # Market/results are never used to decide a ranking.
                 if current is None or probs[0] > current[0] or (
-                    probs[0] == current[0] and horse < current[1]
+                    probs[0] == current[0] and (
+                        raw_score > current[1]
+                        or (raw_score == current[1] and horse < current[2])
+                    )
                 ):
-                    leaders[rkey] = (probs[0], horse, year, scope, labels, probs)
+                    leaders[rkey] = (probs[0], raw_score, horse, year, scope, labels, probs)
 
     for (part, _race), candidate in leaders.items():
-        _, _, year, scope, labels, probs = candidate
+        _, _, _, year, scope, labels, probs = candidate
         for dimensions in ((part, year, scope, "SELECTED_TOP1"),
                            (part, year, "ALL", "SELECTED_TOP1"),
                            (part, 0, scope, "SELECTED_TOP1"),
@@ -271,6 +281,7 @@ def evaluate_csv(csv_path: Path, provenance_info: dict[str, Any], windows: list[
         "probe": "CORE010-OFFLINE-001",
         "status": status,
         "assessment_scope": "ALL_SURFACES; NO_P7_9_OR_DIRT_SLICE",
+        "model_top1_order": "p_win_cal desc, p_win desc, race_horse_id asc",
         "evaluation_type": "historical retrospective holdout diagnostics; not certified live pre-race predictions",
         "provenance": provenance_info,
         "input": {"size_bytes": csv_path.stat().st_size},
