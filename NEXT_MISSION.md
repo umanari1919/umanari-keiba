@@ -1,59 +1,49 @@
 # NEXT MISSION
 
-Mission ID: `RESCUE-MANIFEST-001`
+Mission ID: `WEEKEND-REALITY-GATE-001`
 更新日: 2026-10-07
 Priority: P0
 Status: READY
 
-## 目的
+## Goal
 
-ローカル `neo-jizo-keiba` の未追跡272ファイルを、内容を壊さず自動分類し、
-GitHubへ救出すべきソース・テスト・設計・設定ファイルを確定する。
+Use the already-restored local code and local read-only data to determine the real
+operational state for the upcoming JRA weekend and the requested historical replay.
 
-## 前提
+Do not repeat source rescue.
 
-SYNC-GATE-001で以下を確認済み。
+## Required checks
 
-- Relation: `unborn`
-- Local HEAD: `(unborn)`
-- Tracked changes: 0
-- Untracked files: 272
-- Keyword hits: 1
-- `collect_training.py`: 0
+1. Run the local portfolio/weekend status from the existing
+   `neo-jizo-keiba` workspace.
+2. Verify PostgreSQL `mykeibadb` access is read-only for the prediction path.
+3. Re-check confirmed race-card availability for 2026-10-10 through 2026-10-12,
+   Tokyo / Kyoto.
+4. Keep special registrations separate from confirmed race cards.
+5. Execute or finish the pre-race-only replay for 2026-10-03 and 2026-10-04.
+6. For real cards that pass timing/roster gates, produce jockey-25
+   win / top-2 / top-3 predictions.
+7. Do not inject the unpromoted workout candidate into the personal output.
+8. Report only operational blockers and usable predictions/results.
 
-## 分類
+## Safety
 
-最低限、次に分類する。
+- No source-file transport is needed.
+- Do not delete the local workspace or database.
+- Do not reset/clean the unborn local repository.
+- No automatic wagering.
+- No automatic research-to-production promotion.
+- Prefer read-only DB access for this gate.
 
-- SOURCE
-- TEST
-- CONFIG
-- DOC
-- DATA
-- GENERATED
-- SECRET_RISK
-- OTHER
+## Completion
 
-## 禁止事項
+Mission completes when we have:
 
-- `git add .`
-- commit
-- checkout
-- merge / rebase
-- pullによるworking tree変更
-- reset / clean
-- ファイル削除・移動
-- DBアクセス
-- secret内容の表示・GitHub送信
+- actual weekend source state,
+- actual history/readiness state,
+- 10/3–10/4 replay status,
+- real predicted race/runner counts if cards are available,
+- exact blockers if predictions are not yet possible.
 
-## 完了条件
-
-- 272件の分類数
-- top-level directory件数
-- 拡張子別件数
-- SOURCE / TEST / CONFIG / DOC候補パス
-- `jockey-25` / 3目標 / 調教48 の一致ファイル
-- SECRET_RISKの件数だけ確認（内容は表示しない）
-- GitHubへ救出する安全なファイル集合を確定
-
-完了後、`RESCUE-IMPORT-001` へ進む。
+After completion, the next mission should be chosen from actual runtime evidence,
+not from the old rescue backlog.
