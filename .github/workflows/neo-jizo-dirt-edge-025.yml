@@ -7,6 +7,7 @@ on:
       - "src/neo_jizo_dirt_edge_adapter.py"
       - "tests/test_neo_jizo_dirt_edge.py"
       - "tests/test_neo_jizo_dirt_edge_adapter.py"
+      - "tests/test_neo_jizo_dirt_edge_context_discovery_025.py"
       - "tools/neo_jizo_dirt_edge_context_discovery_025.py"
       - "tools/run_neo_jizo_dirt_edge_context_discovery_025.ps1"
       - "docs/NEO_JIZO_DIRT_EDGE_025.md"
@@ -52,4 +53,4 @@ jobs:
       - name: Install pytest
         run: python -m pip install pytest==9.1.0
       - name: Test NEO JIZO dirt edge contract
-        run: python -m pytest -q tests/test_neo_jizo_dirt_edge.py tests/test_neo_jizo_dirt_edge_adapter.py
+        run: python -m pytest -q tests/test_neo_jizo_dirt_edge.py tests/test_neo_jizo_dirt_edge_adapter.py tests/test_neo_jizo_dirt_edge_context_discovery_025.py
