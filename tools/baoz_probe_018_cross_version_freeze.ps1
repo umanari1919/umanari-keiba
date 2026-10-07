@@ -153,7 +153,13 @@ foreach($file in $files){
 
     try{
         $tables=Get-TableNames $conn
-        if($tables -notcontains '出走馬T'){continue}
+        # BaoZ.mdb may expose linked tables with a non-TABLE schema type.
+        # For this freeze audit we only need databases where 出走馬T is directly queryable.
+        try{
+            [void](Invoke-Row $conn "SELECT Count(*) AS N FROM [出走馬T]")
+        }catch{
+            continue
+        }
 
         $cols=Get-ColumnNames $conn '出走馬T'
         if($cols -notcontains '年月日'){continue}
@@ -189,7 +195,7 @@ foreach($file in $files){
     }
 }
 
-$activePath=Join-Path $BaoZPath 'DB\BaoZ.mdb'
+$activePath=Join-Path $BaoZPath 'DB\BaoZ.ex.mdb'
 $active=$audit | Where-Object { $_.path -eq $activePath } | Select-Object -First 1
 $comparisons=@()
 
