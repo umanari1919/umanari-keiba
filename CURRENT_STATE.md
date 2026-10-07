@@ -1023,6 +1023,63 @@ Next gate:
 - inspect `レースT.レコード作成fromtime` and other timestamp-like fields by historical period;
 - determine whether historical rows carry creation timestamps consistent with historical race periods or only recent reload/rebuild timestamps.
 
+## BAOZ-PROBE-019 local evidence — 2026-10-08
+
+Creation-time and backup-history audit completed.
+
+### レコード作成fromtime
+
+Column exists as a date/time type, but historical coverage is essentially absent:
+
+- 2012-2018: 115,313 races / non-null 0
+- 2019-2023: 83,774 / non-null 0
+- 2024-2025: 34,184 / non-null 0
+- 2026: 13,130 / non-null 25
+- future 2026-10-09..11: 55 / non-null 22
+
+Observed recent values are around 2026-10-06..07.
+
+Conclusion:
+- `レコード作成fromtime` cannot prove historical contemporaneous computation.
+- The date-relation query failed with a provider type mismatch, but this does not materially affect the conclusion because historical non-null coverage is zero.
+
+### 予想計算状況フラグ
+
+Across 2012..2026-10-08:
+- races: 246,346
+- null: 71
+- zero: 1,333
+- nonzero: 244,942
+
+This field is much more populated than `予想計算済み`, but without documented semantics it is not treated as proof of historical provenance.
+
+### Backup history
+
+Only same-day backup-generation artifacts were found:
+
+- BaoZ-Bet.mdb: last write 2026-10-07
+- BaoZ-RA.mdb: 2026-10-08
+- BaoZ.ex.mdb: 2026-10-08
+- BaoZ.MDB: 2026-10-08
+
+No older longitudinal MDB/archive generation was discovered.
+
+### Final temporal-integrity policy for BAOZ-BASELINE-001
+
+Stop provenance drilling here due diminishing evidence returns.
+
+Status:
+
+- pre-result prediction capability: PASS
+- per-race materialized jockey/trainer feature history: STRONG PASS
+- same-day backup/current historical stability: PASS
+- long-horizon contemporaneous archived-forecast proof: UNRESOLVED
+
+Therefore all historical BaoZ results remain labeled **retrospective evaluation**, not certified archived-forecast backtests.
+
+The baseline research may now return to the main performance question:
+- why `馬券評価順位=1 x popularity 7-9 x dirt` deteriorated after 2024.
+
 ## Current model/research state
 
 - NEO JIZO baseline: `jockey-25`
