@@ -278,3 +278,49 @@ Repair:
 
 The one-line launcher downloads a commit-pinned Python script. GitHub CI tests
 connection argument safety, read-only state, Windows/WSL fallback and diagnostics.
+
+
+## Offline continuation with PostgreSQL offline — 2026-10-08
+
+The 025 filesystem audit on the user's PC confirmed:
+
+- Ubuntu WSL distribution exists; its initial reported state was Stopped.
+- Custom PostgreSQL 18 client executable exists at /home/uchih/.keiba_ai/postgres18/bin/psql.
+- PostgreSQL data directory /home/uchih/.keiba_ai/pgdata18 contains PG_VERSION=18.
+- No postmaster.pid, PostgreSQL process or port-5433 Unix socket was observed during the audit.
+- D:/WSL/Ubuntu/ext4.vhdx exists, with size approximately 51.97 GiB.
+- The CORE-010 calibrated-probabilities CSV exists at the known Research location (about 167.56 MiB).
+- The CSV header contains race_id, race_horse_id, race_date, race_scope_cd, label_win, label_top2, label_top3, p_win_cal, p_top2_cal, p_top3_cal.
+
+The evidence confirms the presence of PostgreSQL data *files*, not the database's internal consistency. Do not reinitialize or restart the cluster automatically. The repeated TCP and WSL connection retries are suspended.
+
+### DB-free evaluation path
+
+- Source: CORE/data/CORE-010_calibrated_probabilities.csv
+- Pipeline provenance: CORE/reports/TEMPORAL_SPLIT_plan.json, CORE-005_decision.json, CORE-010_decision.json
+- Evaluator: tools/neo_jizo_core010_offline_evaluation_025.py
+- Launcher: tools/run_neo_jizo_core010_offline_evaluation_025.ps1
+
+The evaluator reads source artifacts but never changes them; no database is contacted.
+
+Allowed metrics:
+
+- win / top2 / top3 actual rates
+- mean calibrated probabilities, calibration gaps, Brier
+- top1-by-p_win_cal win/top2/top3 rate and lift over *all runners in the same slice*
+- TEST/OOS, year, JRA/NAR splits
+
+Temporal requirements:
+
+- TEST and OOS must be explicit non-overlapping date windows.
+- CORE-005 and CORE-010 decision split signatures must match the plan.
+- Missing/mismatched evidence => DIAGNOSTIC_ONLY, not a certified OOS result.
+- This is still a retrospective historical holdout; it does not certify archived prospective race-day predictions.
+
+Until a separate track/market context can be verified, results are labeled
+**ALL_SURFACES; NO_P7_9_OR_DIRT_SLICE**. They cannot be compared directly to the
+BaoZ P7-9 dirt benchmark. Do not invent popularity, odds, or surface from
+race_scope_cd.
+
+The offline runner writes an aggregate-only JSON under TEMP. Never publish
+per-runner predictions, result rows or private input datasets to GitHub.
