@@ -1310,7 +1310,7 @@ The next engineering/research mission is `NEO-JIZO-DIRT-EDGE-025`.
 - Production promotion: not approved
 - Automatic wagering: disabled
 - BaoZ customization: not started
-- BaoZ baseline evidence: pending local read-only extraction
+- BaoZ baseline evidence: frozen retrospective P7-9 dirt diagnostic (PROBE-024); not contemporaneous pre-race validation
 
 ## Operating rule
 
@@ -1318,3 +1318,249 @@ The next engineering/research mission is `NEO-JIZO-DIRT-EDGE-025`.
 - Work only when local PC / WSL / PostgreSQL / BaoZ files are indispensable.
 - One Work should serve one bounded Mission.
 - Large local data and licensed/private artifacts never move to GitHub.
+
+## NEO-JIZO-DIRT-EDGE-025 implementation state — 2026-10-08
+
+GitHub implementation is active on branch `research/neo-jizo-dirt-edge-025` / Draft PR #54.
+
+Implemented:
+
+- `src/neo_jizo_dirt_edge.py`
+  - separate win / top2 / top3 evaluation
+  - Brier scores and calibration gaps
+  - Wilson 95% confidence intervals
+  - market-relative lift
+  - selection win odds-ratio and 95% CI
+  - yearly and organizer splits
+  - duplicate race+runner rejection
+  - probability monotonicity gate
+
+- `src/neo_jizo_dirt_edge_adapter.py`
+  - consumes existing calibrated probability output
+  - freezes model rank from p_win before market/result join
+  - one-to-one prediction/context join
+  - ignores retrospective label columns for ranking
+  - popularity/odds cannot influence model rank
+
+- `tools/neo_jizo_dirt_edge_context_discovery_025.py`
+  - PostgreSQL read-only metadata/aggregate discovery
+  - auto-discovers probability artifact
+  - inventories candidate popularity/odds/finish/track columns
+  - emits no horse-level rows
+
+- `tools/run_neo_jizo_dirt_edge_context_discovery_025.ps1`
+  - one-line launcher for the local discovery step
+
+CI:
+
+- NEO JIZO evaluator/adapter contract
+- restored training core compatibility
+- modern stack quality
+- Windows/Linux x Python 3.13/3.14
+- PowerShell launcher syntax parsing
+
+Local market/dirt evaluation context remains unavailable while PostgreSQL is offline; no new SQL retry is approved. Continue independent offline evaluation of available CORE-010 artifacts.
+
+
+
+## NEO JIZO 025 local PostgreSQL connectivity blocker — 2026-10-08
+
+Confirmed locally by running the pinned 025 market-context discovery:
+
+- Windows PostgreSQL TCP endpoint 127.0.0.1:5433 refused connection (Windows socket 10061).
+- WSL Ubuntu did execute a shell but the original custom PostgreSQL client search found no executable psql under the expected ~/.keiba_ai /home/* /root locations.
+- NO SQL schema inspection or result-row extraction completed.
+- This is not evidence that the PostgreSQL cluster or 45GB historical pgdata18 has been deleted.
+
+Policy decision: stop repeating SQL connection attempts until direct file-system evidence exists.
+
+Next single-pass audit: tools/neo_jizo_pg_storage_audit_025.ps1.
+
+This audit does NOT invoke psql, pg_ctl, systemctl, service, SQL, or any DB write.
+It only inspects:
+- WSL distro/user/home;
+- presence of ~/.keiba_ai/postgres18/bin/psql;
+- pgdata18/PG_VERSION;
+- postmaster.pid *existence* (not process proof);
+- 5433 Unix socket existence;
+- D:/WSL/Ubuntu VHDX metadata;
+- whether the existing CORE-010 CSV is present (header only).
+
+If cluster files are present but no socket is listening, treat PostgreSQL as offline / unreachable, and keep NEO JIZO evaluation code ready rather than changing storage or attempting a destructive DB restoration.
+
+
+## NEO JIZO CORE-010 offline continuation — 2026-10-08
+
+The PostgreSQL filesystem audit confirmed that the WSL PG18 executable and pgdata18 are present but the DB service is offline/unreachable, with no 5433 socket or process. The ~51.97 GiB Ubuntu VHDX and ~167.56 MiB CORE-010 CSV are present. Cluster integrity is not yet proven.
+
+Decision:
+- no automatic service startup, shutdown, restart, DB initialization or migration;
+- no repeat TCP/WSL connection probes at this stage;
+- continue NEO JIZO evaluation from the existing CORE-010 CSV alone.
+
+Implemented on research/neo-jizo-dirt-edge-025:
+
+- tools/neo_jizo_core010_offline_evaluation_025.py
+- tools/run_neo_jizo_core010_offline_evaluation_025.ps1
+- tests/test_neo_jizo_core010_offline_evaluation_025.py
+- CI compile, PowerShell syntax, and offline evaluation tests
+
+The evaluator:
+
+- streams local CORE-010 predictions and labels without copying row-level data;
+- computes win/top2/top3 rates, average calibrated probabilities, Brier, calibration gap;
+- freezes top1 model selection by calibrated p_win, then raw p_win for isotonic ties, then runner ID;
+- reports TEST/OOS, year, JRA/NAR aggregates and model-top1 lift vs all runners in the same aggregate;
+- requires matching temporal split plan and CORE-005/CORE-010 decision split IDs for HOLDOUT_CONTRACT_MATCHED status;
+- otherwise labels results DIAGNOSTIC_ONLY/PARTIAL, not certified OOS.
+
+Until verified dirt/popularity/odds context is available, all results are **ALL_SURFACES**, not comparable to BaoZ P7-9 dirt baseline.
+
+The DB-free one-line CORE-010 offline evaluation ran on 2026-10-08. See observed results below; PARTIAL_INVALID_ROWS remains the active blocker.
+
+
+## NEO JIZO CORE-010 first local offline result — 2026-10-08
+
+User ran read-only local offline evaluator against their actual
+CORE-010_calibrated_probabilities.csv.
+
+- Total source rows read: 805,095.
+- Status: **PARTIAL_INVALID_ROWS**.
+- Temporal provenance: **HOLDOUT_CONTRACT_MATCHED** (split IDs match), but upstream full as-of integrity not independently certified.
+- No PostgreSQL access; no source CSV modification; no row-level export.
+- TEST: 95,933 scored valid runners; model-top1 7,790.
+- OOS: 89,907 scored valid runners; model-top1 7,120.
+
+### Observed top1 actual rates, all surfaces
+
+| Target | TEST | OOS |
+|---|---:|---:|
+| Win | 31.8357% | 29.7472% |
+| Top2 | 49.4095% | 48.9185% |
+| Top3 | 61.3094% | 60.9831% |
+
+OOS organizer split (top1):
+- JRA: 4,973; win 25.5178%, top2 44.8623%, top3 57.6915%.
+- NAR: 2,147; win 39.5435%, top2 58.3139%, top3 68.6074%.
+
+TEST organizer split (top1):
+- JRA: 4,546; win 27.2107%, top2 45.1166%, top3 56.9512%.
+- NAR: 3,244; win 38.3169%, top2 55.4255%, top3 67.4168%.
+
+### Important organizer-mix confounding
+
+NAR share among model-top1 selected horses:
+- TEST = 41.6431%.
+- OOS = 30.1545%.
+
+Using the fixed **TEST top1 JRA/NAR mix** and OOS group-specific rates:
+
+| Target | OOS unadjusted | OOS at TEST organizer mix | Organizer-standardized OOS minus TEST |
+|---|---:|---:|---:|
+| Win | 29.7472% | 31.3586% | -0.4771 percentage points |
+| Top2 | 48.9185% | 50.4640% | +1.0545 percentage points |
+| Top3 | 60.9831% | 62.2372% | +0.9279 percentage points |
+
+The crude 2.0885 percentage-point win decline decomposes descriptively into
+-0.4771pt at fixed TEST organizer mix and -1.6114pt composition contribution.
+This is a direct standardization, not a causal attribution or statistical significance test.
+
+The top1 lift shown in the first run (OOS 3.752 win, 3.085 top2,
+2.564 top3) is relative to **all runners in its own ALL_SURFACES group**,
+NOT a market-odds lift or comparable to BaoZ P7-9 dirt.
+
+### Next validation gate
+
+The first-run output did not print invalid row counts, reasons or the affected
+TEST/OOS races. These are essential before interpreting the rates as reliable.
+
+Implemented an improved offline evaluator on GitHub:
+- aggregate invalid reasons and totals (no horse identities);
+- invalid row counts by TRAIN/VALIDATION/SELECTION/TEST/OOS/unknown date;
+- number of affected races;
+- sensitivity evaluation after excluding races with detected invalid rows;
+- direct JRA/NAR scope standardization for all three targets.
+
+Next local execution is **one repeat of the DB-free CORE-010 evaluation**
+using the improved pinned runner after CI, not PostgreSQL recovery.
+
+Results remain **PARTIAL** and not direct evidence of superiority over BaoZ.
+
+
+
+## NEO JIZO 025 second local CORE-010 quality audit — 2026-10-08
+
+The user ran the improved DB-free offline evaluator over 805,095 CORE-010 rows.
+
+Quality:
+- **PARTIAL_INVALID_ROWS**; provenance metadata **HOLDOUT_CONTRACT_MATCHED**.
+- 8,573 invalid rows (1.065% of input).
+- All 8,573 were categorized by the current detector as **INVALID_OR_MISSING_OUTCOME_LABELS**. THIS CATEGORY DID NOT distinguish blank, nonnumeric, out-of-range, or contradictory labels; it does not prove that the source records are corrupt or that the outcomes are simply pending.
+- Invalid by temporal split: TRAIN 3,930; VALIDATION 1,144; SELECTION 971; TEST 992; OOS 1,536.
+- Known affected invalid TEST+OOS rows: 2,528.
+- Total distinct race IDs associated with invalid rows across all splits: 7,085.
+- Unknown-date invalid rows: zero.
+
+Sensitivity with ALL races that contain a detected invalid row removed:
+
+| Target, top1 | TEST | OOS |
+|---|---:|---:|
+| Win | 31.6744% (6,892 top1) | 29.5216% (6,375 top1) |
+| Top2 | 49.2890% | 48.9725% |
+| Top3 | 61.1434% | 60.9569% |
+
+These are close to the original valid-row-only figures, but neither method proves missingness is random or that all race runners appear in the CSV.
+
+JRA/NAR composition normalization (valid-row-only, ALL_SURFACES):
+- TEST top1 NAR share 41.64%; OOS top1 NAR share 30.15%.
+- OOS win at TEST organizer mix 31.359%, raw 29.747%, TEST 31.836%.
+- OOS top2 at TEST mix 50.464%, TEST 49.409%.
+- OOS top3 at TEST mix 62.237%, TEST 61.309%.
+
+This demonstrates a strong *descriptive* organizer-mix confounder. It is NOT a causal proof nor significance test. The outcomes cannot yet be compared directly with the frozen BaoZ P7-9 dirt benchmark.
+
+### Next data quality classification gate
+
+An updated evaluator now independently counts:
+- ALL_THREE_LABELS_BLANK / ONE_LABEL_BLANK / TWO_LABELS_BLANK,
+- NON_NUMERIC_LABEL / NON_BINARY_OR_NONFINITE_LABEL / NONMONOTONIC_TARGET_LABELS,
+- each kind by TRAIN/VALIDATION/SELECTION/TEST/OOS, year and JRA/NAR,
+- split-specific usable scored-row coverage and affected race counts,
+- original and clean-race sensitivity figures.
+
+This new schema has synthetic tests in CI. No source CSV rewrites, DB connections, service actions, runner details or horse-level exports.
+
+The next local action, ONLY after all CI gates pass, is one DB-free evaluation with the pinned classification-enabled Python script.
+
+
+## NEO-JIZO-025 final missing-label subtype audit — 2026-10-08
+
+The third read-only CORE-010 scan confirms the precise CSV fact:
+
+- 805,095 input rows.
+- 8,573 rows (1.065%) have **all three outcome labels blank** (win/top2/top3).
+- No malformed, partially missing, non-binary, or contradictory labels were detected within those 8,573.
+- JRA blank-all rows: 4,956; NAR: 3,617.
+- By split: TRAIN 3,930 / VALIDATION 1,144 / SELECTION 971 / TEST 992 / OOS 1,536.
+- By year: 2016 744; 2017 709; 2018 768; 2019 827; 2020 757; 2021 698; 2022 752; 2023 785; 2024 764; 2025 677; 2026 1,092.
+- The blank labels cannot be classified as cancellations, exclusions, nonfinishers, or unresolved race outcomes until source-status evidence is obtained.
+- Do **not** convert empty labels into loss=0 or win=0.
+
+Usable row coverage:
+- TEST 95,933 / (95,933+992) = 98.977%.
+- OOS 89,907 / (89,907+1,536) = 98.320%.
+- Race IDs affected by missing label rows: TEST 898; OOS 793.
+
+After excluding each race with detected invalid/unlabelled rows, sensitivity-only top1 rates:
+
+| Target | TEST 6,892 top1 | OOS 6,375 top1 |
+|---|---:|---:|
+| Win | 31.6744% | 29.5216% |
+| Top2 | 49.2890% | 48.9725% |
+| Top3 | 61.1434% | 60.9569% |
+
+A close sensitivity result does NOT establish that omissions are random; data cannot be certified for complete racecards or pre-race archived timestamps. No direct comparison to BaoZ P7–9 dirt is supported.
+
+**Engineering decision:** stop repeating the same 805,095-row scan. Mark missing outcomes as quarantined, not numeric corruption. Preserve original CSV. Keep the 025 retrospective diagnostics PARTIAL; prioritize the independent forward-looking frozen pre-race prediction/evaluation gate next.
+
+On GitHub the evaluator now emits status PARTIAL_UNLABELLED_OUTCOMES when and only when every invalid row is an entirely missing three-target result. No claims of an external reason for blanks are made. This new label will appear only after a future execution of the updated script and does not require a repeat scan for the present decision.

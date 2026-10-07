@@ -1,6 +1,6 @@
 # NEO-JIZO-DIRT-EDGE-025
 
-Status: DESIGN / IMPLEMENTATION READY  
+Status: EVALUATION CORE IMPLEMENTED / LOCAL EVIDENCE PENDING  
 Date: 2026-10-08
 
 ## Mission
@@ -166,3 +166,161 @@ If the NEO JIZO signal does not improve or remain stable in recent data, return 
 Keep BaoZ untouched.
 
 No BaoZ setting changes are permitted under this mission.
+
+## Implemented evaluation contract
+
+GitHub-side evaluator:
+
+- `src/neo_jizo_dirt_edge.py`
+- `tests/test_neo_jizo_dirt_edge.py`
+- `.github/workflows/neo-jizo-dirt-edge-025.yml`
+
+Required row fields:
+
+- `race_id`
+- `runner_id`
+- `finish_position`
+- `model_rank`
+- `p_win`
+- `p_top2`
+- `p_top3`
+
+Evaluation/slice fields:
+
+- `race_date`
+- `popularity`
+- `odds`
+- `surface`
+- `organizer`
+
+The evaluator enforces:
+
+- unique `race_id + runner_id`;
+- positive finish position and model rank;
+- probabilities in [0, 1];
+- `p_win <= p_top2 <= p_top3`;
+- popularity/odds positivity when supplied.
+
+Outputs include:
+
+- base and selected win/top2/top3 rates;
+- average predicted probabilities;
+- calibration gaps for all three targets;
+- Brier scores for all three targets;
+- market-relative lift for all three targets;
+- win odds-ratio vs non-selected runners;
+- yearly splits;
+- organizer splits.
+
+The first local evidence step must provide only the minimum sanitized prediction/result rows needed by this contract. No MDB or PostgreSQL dump is required.
+
+## Existing-pipeline adapter
+
+The mission reuses the existing calibrated three-target output:
+
+- `CORE/data/CORE-010_calibrated_probabilities.csv`
+
+Adapter:
+
+- `src/neo_jizo_dirt_edge_adapter.py`
+
+Prediction-side columns consumed:
+
+- `race_id`
+- `race_horse_id`
+- `race_date`
+- `p_win_cal`
+- `p_top2_cal`
+- `p_top3_cal`
+
+Evaluation-context columns are supplied separately:
+
+- `race_id`
+- `race_horse_id`
+- `finish_position`
+- `popularity`
+- `odds`
+- `surface`
+- `organizer`
+
+### Leakage boundary
+
+The adapter freezes `model_rank` from `p_win_cal` **before** joining evaluation context.
+
+Therefore:
+
+- popularity cannot influence model rank;
+- odds cannot influence model rank;
+- finish position cannot influence model rank;
+- legacy label columns present in retrospective probability files are ignored by the adapter.
+
+The context join is one-to-one and fails closed on duplicate or missing keys.
+
+This mission does not require generating a new model before the first benchmark.
+
+## Connection recovery (2026-10-08)
+
+The first local context-discovery attempt failed before the SQL audit with
+`psql.exe` exit code 2 and a suppressed stderr diagnostic. No schema query
+succeeded and no DB modification occurred.
+
+Repair:
+
+- Connect to `127.0.0.1:5433` as the known repository role `postgres`.
+- Keep `-w` (noninteractive); never ask for a password in logs.
+- Force read-only settings on every query and verify them after connecting.
+- If Windows TCP is unavailable, try the existing Ubuntu distribution through
+  its local PostgreSQL Unix socket at `/tmp`, still in read-only mode.
+- Do **not** start/restart/stop PostgreSQL or mutate any local DB or service.
+- If both routes fail, print sanitized per-route PostgreSQL diagnostics and
+  report `READ_ONLY_DB_CONNECTION_BLOCKED` rather than a Python traceback.
+- No connection success is claimed until the local script actually succeeds.
+
+The one-line launcher downloads a commit-pinned Python script. GitHub CI tests
+connection argument safety, read-only state, Windows/WSL fallback and diagnostics.
+
+
+## Offline continuation with PostgreSQL offline — 2026-10-08
+
+The 025 filesystem audit on the user's PC confirmed:
+
+- Ubuntu WSL distribution exists; its initial reported state was Stopped.
+- Custom PostgreSQL 18 client executable exists at /home/uchih/.keiba_ai/postgres18/bin/psql.
+- PostgreSQL data directory /home/uchih/.keiba_ai/pgdata18 contains PG_VERSION=18.
+- No postmaster.pid, PostgreSQL process or port-5433 Unix socket was observed during the audit.
+- D:/WSL/Ubuntu/ext4.vhdx exists, with size approximately 51.97 GiB.
+- The CORE-010 calibrated-probabilities CSV exists at the known Research location (about 167.56 MiB).
+- The CSV header contains race_id, race_horse_id, race_date, race_scope_cd, label_win, label_top2, label_top3, p_win_cal, p_top2_cal, p_top3_cal.
+
+The evidence confirms the presence of PostgreSQL data *files*, not the database's internal consistency. Do not reinitialize or restart the cluster automatically. The repeated TCP and WSL connection retries are suspended.
+
+### DB-free evaluation path
+
+- Source: CORE/data/CORE-010_calibrated_probabilities.csv
+- Pipeline provenance: CORE/reports/TEMPORAL_SPLIT_plan.json, CORE-005_decision.json, CORE-010_decision.json
+- Evaluator: tools/neo_jizo_core010_offline_evaluation_025.py
+- Launcher: tools/run_neo_jizo_core010_offline_evaluation_025.ps1
+
+The evaluator reads source artifacts but never changes them; no database is contacted.
+
+Allowed metrics:
+
+- win / top2 / top3 actual rates
+- mean calibrated probabilities, calibration gaps, Brier
+- top1-by-p_win_cal win/top2/top3 rate and lift over *all runners in the same slice*
+- TEST/OOS, year, JRA/NAR splits
+
+Temporal requirements:
+
+- TEST and OOS must be explicit non-overlapping date windows.
+- CORE-005 and CORE-010 decision split signatures must match the plan.
+- Missing/mismatched evidence => DIAGNOSTIC_ONLY, not a certified OOS result.
+- This is still a retrospective historical holdout; it does not certify archived prospective race-day predictions.
+
+Until a separate track/market context can be verified, results are labeled
+**ALL_SURFACES; NO_P7_9_OR_DIRT_SLICE**. They cannot be compared directly to the
+BaoZ P7-9 dirt benchmark. Do not invent popularity, odds, or surface from
+race_scope_cd.
+
+The offline runner writes an aggregate-only JSON under TEMP. Never publish
+per-runner predictions, result rows or private input datasets to GitHub.
