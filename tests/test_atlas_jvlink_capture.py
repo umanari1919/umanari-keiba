@@ -299,6 +299,21 @@ class CaptureTests(unittest.TestCase):
         self.assertEqual(result["events"][0]["reason"], "REIMPORT_REQUIRED")
         retry.assert_called_once()
 
+    def test_cannot_cache_a_file_mutated_after_db_commit(self):
+        jv.capture(self.root, first_from="20261007000000",
+                   com_factory=self.fake(FakeJVLink([b"RAabc"])))
+        _, manifests = inbox._ready_jv_batches(self.root)
+        manifest, parts = manifests[0]
+        item = inbox.load_authorizations(self.root)["JRA"]
+        path, digest = parts[0]
+        original = path.read_bytes()
+        changed = original.replace(b"UkFhYmM=", b"UkF4eXo=")
+        self.assertNotEqual(original, changed)
+        path.write_bytes(changed)
+        with self.assertRaisesRegex(inbox.ImportBlocked, "JV_SOURCE_CHANGED_AFTER_COMMIT"):
+            inbox._jv_store_done_receipt(self.root, manifest, parts, item)
+        self.assertFalse(inbox._jv_done_receipt_path(self.root, manifest).exists())
+
     def test_mutated_old_inbox_file_disables_fast_duplicate(self):
         jv.capture(self.root, first_from="20261007000000",
                    com_factory=self.fake(FakeJVLink([b"RAabc"])))
