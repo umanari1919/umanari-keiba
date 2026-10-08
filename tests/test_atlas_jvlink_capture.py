@@ -264,6 +264,59 @@ class CaptureTests(unittest.TestCase):
         self.assertEqual(sum(len(inbox.parse_file(p)[2]) for p in outputs), 3)
         self.assertFalse(list((self.root / "work").rglob("*.part")))
 
+    def test_verified_duplicate_receipt_avoids_rereading_large_raw_history(self):
+        jv.capture(self.root, first_from="20261007000000",
+                   com_factory=self.fake(FakeJVLink([b"RAabc"])))
+        _, manifests = inbox._ready_jv_batches(self.root)
+        self.assertEqual(len(manifests), 1)
+        manifest, files = manifests[0]
+        item = inbox.load_authorizations(self.root)["JRA"]
+        inbox._jv_store_done_receipt(self.root, manifest, files, item)
+        assert all(len(sha) == 64 for _, sha in files)
+        with patch.object(inbox, "_jv_verified_source_digests",
+                          return_value={sha for _, sha in files}), \
+             patch.object(inbox, "commit_jv_batch",
+                          side_effect=AssertionError("expensive reparse not permitted")) as expensive:
+            result = inbox.run_once(self.root, commit=True, organizers=("JRA",))
+        self.assertEqual(result["duplicates"], len(files))
+        self.assertEqual(result["blocked"], 0)
+        expensive.assert_not_called()
+
+    def test_db_restore_missing_objects_disables_fast_duplicate(self):
+        jv.capture(self.root, first_from="20261007000000",
+                   com_factory=self.fake(FakeJVLink([b"RAabc"])))
+        _, manifests = inbox._ready_jv_batches(self.root)
+        manifest, files = manifests[0]
+        inbox._jv_store_done_receipt(
+            self.root, manifest, files, inbox.load_authorizations(self.root)["JRA"]
+        )
+        with patch.object(inbox, "_jv_verified_source_digests", return_value=set()), \
+             patch.object(inbox, "commit_jv_batch",
+                          side_effect=inbox.ImportBlocked("REIMPORT_REQUIRED")) as retry:
+            result = inbox.run_once(self.root, commit=True, organizers=("JRA",))
+        self.assertEqual(result["duplicates"], 0)
+        self.assertEqual(result["blocked"], len(files))
+        self.assertEqual(result["events"][0]["reason"], "REIMPORT_REQUIRED")
+        retry.assert_called_once()
+
+    def test_mutated_old_inbox_file_disables_fast_duplicate(self):
+        jv.capture(self.root, first_from="20261007000000",
+                   com_factory=self.fake(FakeJVLink([b"RAabc"])))
+        _, manifests = inbox._ready_jv_batches(self.root)
+        manifest, files = manifests[0]
+        item = inbox.load_authorizations(self.root)["JRA"]
+        inbox._jv_store_done_receipt(self.root, manifest, files, item)
+        original = files[0][0].read_bytes()
+        # Original remains same byte count, but the record contents differ.
+        # Metadata and source SHA then require the strict byte-level path.
+        files[0][0].write_bytes(original.replace(b"RAabc", b"RAxyz"))
+        with patch.object(inbox, "_jv_verified_source_digests",
+                          return_value={sha for _, sha in files}):
+            blocked = inbox.run_once(self.root, commit=True, organizers=("JRA",))
+        self.assertEqual(blocked["blocked"], len(files))
+        self.assertEqual(blocked["events"][0]["reason"], "JV_CHUNK_HASH_MISMATCH")
+        self.assertEqual(blocked["duplicates"], 0)
+
     def test_crash_safe_publish_is_content_addressed(self):
         with tempfile.TemporaryDirectory(dir=self.root) as work:
             src = Path(work) / "test.part"
