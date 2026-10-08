@@ -396,8 +396,9 @@ def _jv_verified_source_digests(item: dict):
             rows = con.execute(
                 "SELECT o.object_sha256 FROM atlas.import_object o "
                 "WHERE o.source_id=%s "
-                "AND EXISTS (SELECT 1 FROM atlas.ingest_decision d "
-                "  WHERE d.object_id=o.object_id AND d.decision='VALIDATED')",
+                "AND (SELECT d.decision FROM atlas.ingest_decision d "
+                "     WHERE d.object_id=o.object_id "
+                "     ORDER BY d.decision_id DESC LIMIT 1)='VALIDATED'",
                 (source[0],),
             ).fetchall()
             return {row[0] for row in rows}
@@ -444,7 +445,8 @@ def _jv_can_skip_reimport(root: Path, manifest_path: Path, entries: list,
         receipt = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, ValueError) as exc:
         raise ImportBlocked("JV_DONE_RECEIPT_INVALID") from exc
-    if (receipt.get("source_code") != item.get("source_code")
+    if (receipt.get("format") != "ATLAS_JV_DONE_V1"
+            or receipt.get("source_code") != item.get("source_code")
             or any(expected not in known_digests for _, expected in entries)):
         return False
     return receipt.get("fingerprint") == _jv_batch_fingerprint(manifest_path, entries)
