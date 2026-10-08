@@ -209,12 +209,14 @@ def _spool(client: Any, temp: Path, *, max_idle: int,
             if rc == 0:
                 break
             if rc in (-1, -3):
-                if rc == -3:
-                    if monotonic() - idle_since >= max_idle:
-                        raise CaptureBlocked("JVGETS_DOWNLOAD_TIMEOUT")
-                    sleep(1.0)
-                else:
-                    idle_since = monotonic()
+                # A file-switch (-1) isn't progress. Repeated -1 previously
+                # reset the timer and could spin forever without reading data.
+                if monotonic() - idle_since >= max_idle:
+                    raise CaptureBlocked(
+                        "JVGETS_DOWNLOAD_TIMEOUT" if rc == -3
+                        else "JVGETS_FILE_SWITCH_TIMEOUT"
+                    )
+                sleep(1.0 if rc == -3 else 0.1)
                 continue
             if rc < 0:
                 raise CaptureBlocked("JVGETS_FAILED")
