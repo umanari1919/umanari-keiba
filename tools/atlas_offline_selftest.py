@@ -19,6 +19,7 @@ TESTS = (
     "test_atlas_jra_daily.py",
     "test_atlas_doctor.py",
     "test_atlas_db_setup.py",
+    "test_atlas_jra_register.py",
     "test_atlas_offline_selftest.py",
 )
 SENSITIVE_ENV = (
