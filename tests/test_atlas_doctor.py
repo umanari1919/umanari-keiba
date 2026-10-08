@@ -104,6 +104,59 @@ class DoctorTests(unittest.TestCase):
         self.assertEqual(item["status"], "PASS")
         self.assertFalse(outcome["jvlink_called"])
 
+    def test_com_not_contacted_during_default_read_only_diagnosis(self):
+        calls = []
+        outcome = doctor.report(
+            self.root, windows=True, bitness=64,
+            module_available=lambda _: True,
+            com_probe=lambda: calls.append("COM"),
+        )
+        self.assertEqual(calls, [])
+        statuses = {c["code"]: c["status"] for c in outcome["checks"]}
+        self.assertEqual(statuses["JV_COM_LOCAL"], "ACTION_REQUIRED")
+        self.assertFalse(outcome["jvlink_called"])
+
+    def test_explicit_com_check_uses_local_probe_and_stays_non_network(self):
+        called = []
+        def success():
+            called.append("COM-ONLY")
+        outcome = doctor.report(
+            self.root, windows=True, bitness=64,
+            module_available=lambda _: True,
+            check_com=True, com_probe=success,
+        )
+        statuses = {c["code"]: c["status"] for c in outcome["checks"]}
+        self.assertEqual(statuses["JV_COM_LOCAL"], "PASS")
+        self.assertEqual(called, ["COM-ONLY"])
+        self.assertFalse(outcome["jvlink_called"])
+        self.assertTrue(outcome["read_only"])
+
+    def test_com_exception_does_not_expose_local_system_details(self):
+        private = "SECRET_LOCAL_REGISTRY_CRED"
+        def fails():
+            raise RuntimeError(private)
+        result = doctor.report(
+            self.root, windows=True, bitness=64,
+            module_available=lambda _: True,
+            check_com=True, com_probe=fails,
+        )
+        row = next(c for c in result["checks"] if c["code"] == "JV_COM_LOCAL")
+        self.assertEqual(row["status"], "BLOCKED")
+        self.assertNotIn(private, json.dumps(result))
+
+    def test_missing_pywin32_blocks_com_before_probe(self):
+        calls = []
+        result = doctor.report(
+            self.root, windows=True, bitness=64,
+            module_available=lambda _: False,
+            check_com=True, com_probe=lambda: calls.append("UNSAFE"),
+        )
+        self.assertEqual(calls, [])
+        self.assertEqual(
+            next(c["status"] for c in result["checks"] if c["code"] == "JV_COM_LOCAL"),
+            "BLOCKED",
+        )
+
     def test_unknown_sdk_never_claims_live_certification(self):
         outcome = doctor.report(
             self.root, windows=False,
