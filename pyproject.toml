@@ -25,6 +25,11 @@ model = [
 mlops = [
   "mlflow==3.16.0",
 ]
+# Optional, CPU-only, license-reviewed streaming drift detection.
+# Never enabled by default; no historical result labels are guessed.
+drift = [
+  "river==0.26.1",
+]
 dev = [
   "ruff==0.16.8",
   "pytest==9.1.0",
