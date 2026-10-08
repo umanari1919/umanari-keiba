@@ -405,6 +405,35 @@ class CaptureTests(unittest.TestCase):
             self.assertEqual(a, b)
             self.assertEqual(len(list((self.root / "inbox" / "JRA").glob("*.jsonl"))), 1)
 
+    def test_endless_jvlink_file_switch_does_not_spin_forever(self):
+        client = FakeJVLink([-1, -1, -1, -1])
+        ticks = iter([0.0, 0.2, 1.1])
+        slept = []
+        with self.assertRaisesRegex(
+            jv.CaptureBlocked, "JVGETS_FILE_SWITCH_TIMEOUT"
+        ):
+            jv.capture(
+                self.root, first_from="20261007000000",
+                com_factory=self.fake(client), max_idle=1,
+                monotonic=lambda: next(ticks),
+                sleep=lambda seconds: slept.append(seconds),
+            )
+        self.assertEqual(slept, [0.1])
+        self.assertEqual(client.close_calls, 1)
+        self.assertFalse((self.root / "receipts" / "jra_jvlink_cursor.json").exists())
+        self.assertFalse(list((self.root / "inbox" / "JRA").glob("*.jsonl")))
+
+    def test_switch_then_real_record_resets_progress_timer(self):
+        client = FakeJVLink([-1, b"RAabc", -1, b"SEdef"])
+        ticks = iter([0.0, 0.1, 0.2, 0.3, 0.4])
+        result = jv.capture(
+            self.root, first_from="20261007000000",
+            com_factory=self.fake(client), max_idle=1,
+            monotonic=lambda: next(ticks), sleep=lambda _: None,
+        )
+        self.assertEqual(result["records"], 2)
+        self.assertEqual(result["status"], "CAPTURED_RAW_IN_INBOX")
+
     def test_closed_failure_does_not_advance(self):
         obj = FakeJVLink([b"RAabc"], close=-100)
         with self.assertRaisesRegex(jv.CaptureBlocked, "JVCLOSE_FAILED"):
