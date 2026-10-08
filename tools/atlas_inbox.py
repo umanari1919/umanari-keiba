@@ -273,57 +273,101 @@ def enroll_sources(root: Path):
     return "REGISTERED"
 
 
-def commit_records(root: Path, organizer: str, item: dict, path: Path, digest: str,
-                   length: int, records: list):
+def _commit_records_tx(con, organizer: str, item: dict, path: Path,
+                       digest: str, length: int, records: list):
+    """Insert one immutable raw file using the CALLER'S transaction.
+
+    Used for a complete multi-part JV batch: any failure rolls back ALL chunks.
+    """
     from psycopg.types.json import Jsonb
 
-    # Local immutable copy succeeds BEFORE transaction. Database errors cannot destroy it.
+    source = con.execute(
+        "SELECT source_id,organizer,rights_status FROM atlas.data_source "
+        "WHERE source_code=%s FOR SHARE", (item["source_code"],)
+    ).fetchone()
+    if not source or source[1] != organizer or source[2] not in APPROVED or (
+        source[2] != item["rights_status"]
+    ):
+        raise ImportBlocked("SOURCE_NOT_REGISTERED_OR_REVOKED")
+    source_id = source[0]
+    result = con.execute(
+        "INSERT INTO atlas.import_object "
+        "(source_id,object_sha256,object_bytes,provider_object_key,acquired_at,"
+        "rights_status_at_ingest) VALUES (%s,%s,%s,%s,%s,%s) "
+        "ON CONFLICT (source_id,object_sha256) DO NOTHING RETURNING object_id",
+        (source_id, digest, length, path.name,
+         datetime.now(timezone.utc), item["rights_status"]),
+    ).fetchone()
+    if result is None:
+        row = con.execute(
+            "SELECT d.decision FROM atlas.import_object o "
+            "LEFT JOIN atlas.ingest_decision d ON d.object_id=o.object_id "
+            "WHERE o.source_id=%s AND o.object_sha256=%s "
+            "ORDER BY d.decision_id DESC LIMIT 1", (source_id, digest),
+        ).fetchone()
+        if not row or row[0] != "VALIDATED":
+            raise ImportBlocked("EXISTING_BATCH_UNVERIFIED")
+        return "DUPLICATE"
+    object_id = result[0]
+    for ordinal, kind, key, payload_sha, payload, published, event in records:
+        con.execute(
+            "INSERT INTO atlas.raw_observation "
+            "(object_id,source_id,ordinal,native_kind,native_key,raw_sha256,"
+            "raw_payload,provider_published_at,event_time) "
+            "VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s)",
+            (object_id, source_id, ordinal, kind, key, payload_sha,
+             Jsonb(payload), published, event),
+        )
+    con.execute(
+        "INSERT INTO atlas.ingest_decision "
+        "(object_id,decision,validated_record_count,quarantined_record_count,policy_version) "
+        "VALUES (%s,'VALIDATED',%s,0,%s)",
+        (object_id, len(records), POLICY),
+    )
+    return "IMPORTED"
+
+
+def commit_records(root: Path, organizer: str, item: dict, path: Path,
+                   digest: str, length: int, records: list):
+    # Preserve the original public per-file behavior for non-JV sources.
     snapshot(root, path, digest, length)
     with connect_db() as con:
         with con.transaction():
-            source = con.execute(
-                "SELECT source_id,organizer,rights_status FROM atlas.data_source "
-                "WHERE source_code=%s FOR SHARE", (item["source_code"],)
-            ).fetchone()
-            if not source or source[1] != organizer or source[2] not in APPROVED or (
-                source[2] != item["rights_status"]
-            ):
-                raise ImportBlocked("SOURCE_NOT_REGISTERED_OR_REVOKED")
-            source_id = source[0]
-            result = con.execute(
-                "INSERT INTO atlas.import_object "
-                "(source_id,object_sha256,object_bytes,provider_object_key,acquired_at,"
-                "rights_status_at_ingest) VALUES (%s,%s,%s,%s,%s,%s) "
-                "ON CONFLICT (source_id,object_sha256) DO NOTHING RETURNING object_id",
-                (source_id, digest, length, path.name, datetime.now(timezone.utc), item["rights_status"])
-            ).fetchone()
-            if result is None:
-                row = con.execute(
-                    "SELECT d.decision FROM atlas.import_object o "
-                    "LEFT JOIN atlas.ingest_decision d ON d.object_id=o.object_id "
-                    "WHERE o.source_id=%s AND o.object_sha256=%s "
-                    "ORDER BY d.decision_id DESC LIMIT 1", (source_id, digest)
-                ).fetchone()
-                if not row or row[0] != "VALIDATED":
-                    raise ImportBlocked("EXISTING_BATCH_UNVERIFIED")
-                return "DUPLICATE"
-            object_id = result[0]
-            for ordinal, kind, key, payload_sha, payload, published, event in records:
-                con.execute(
-                    "INSERT INTO atlas.raw_observation "
-                    "(object_id,source_id,ordinal,native_kind,native_key,raw_sha256,"
-                    "raw_payload,provider_published_at,event_time) "
-                    "VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s)",
-                    (object_id, source_id, ordinal, kind, key, payload_sha,
-                     Jsonb(payload), published, event)
-                )
-            con.execute(
-                "INSERT INTO atlas.ingest_decision "
-                "(object_id,decision,validated_record_count,quarantined_record_count,policy_version) "
-                "VALUES (%s,'VALIDATED',%s,0,%s)",
-                (object_id, len(records), POLICY)
+            return _commit_records_tx(
+                con, organizer, item, path, digest, length, records
             )
-            return "IMPORTED"
+
+
+def commit_jv_batch(root: Path, item: dict, entries: list):
+    """Precheck ALL JV chunks, snapshot ALL, commit ALL in one PG transaction.
+
+    entries: [(path, manifest_sha256), ...]. Never partially accept a batch.
+    """
+    prepared = []
+    total_records = 0
+    for path, manifest_sha in entries:
+        digest, size, records = parse_file(path)
+        if digest != manifest_sha:
+            raise ImportBlocked("JV_CHUNK_HASH_MISMATCH")
+        if any(row[1] != "JVDATA" for row in records):
+            raise ImportBlocked("JV_CHUNK_KIND_MISMATCH")
+        prepared.append((path, digest, size, records))
+        total_records += len(records)
+    if not prepared:
+        raise ImportBlocked("JV_EMPTY_BATCH")
+    for path, digest, size, _ in prepared:
+        snapshot(root, path, digest, size)
+    statuses = []
+    with connect_db() as con:
+        with con.transaction():
+            for path, digest, size, records in prepared:
+                statuses.append(_commit_records_tx(
+                    con, "JRA", item, path, digest, size, records,
+                ))
+    return [
+        (path.name, digest, len(records), status)
+        for (path, digest, _, records), status in zip(prepared, statuses)
+    ]
 
 
 JV_FILE = re.compile(r"^jv_RACE_[0-9]{14}_[0-9]{6}_[0-9a-f]{16}[.]jsonl$")
