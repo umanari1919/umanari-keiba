@@ -30,7 +30,9 @@ RECORD_LIMIT = 150_000
 MAX_RECORD_BYTES = 150_000
 JV_GETS_BUFFER = 150_000
 MAX_POLL_SECONDS = 3600
-APP_ID = "NEO-JIZO-ATLAS/0.2"
+# JRA-VAN guidance: private development uses UNKNOWN. Distribution uses
+# the officially registered software SID, supplied locally and never logged.
+APP_ID = "UNKNOWN"
 
 
 class CaptureBlocked(Exception):
@@ -99,6 +101,23 @@ def create_com():
     return com, pythoncom.CoUninitialize
 
 
+def local_software_id() -> str:
+    value = os.environ.get("ATLAS_JVLINK_SID", APP_ID)
+    if (not isinstance(value, str) or not value
+            or value[0].isspace() or len(value.encode("utf-8")) > 64
+            or any(ord(ch) < 32 for ch in value)):
+        raise CaptureBlocked("JV_SID_INVALID")
+    return value
+
+
+def api_error(stage: str, code: int):
+    # Never log COM exception strings, secret SID, or licensed record content.
+    # Exact negative return codes are public vendor error identifiers.
+    if type(code) is not int or code >= 0 or code < -9999:
+        raise CaptureBlocked(stage + "_UNEXPECTED_RETURN")
+    raise CaptureBlocked(stage + "_ERROR_" + str(abs(code)))
+
+
 def _decode_open(result: Any):
     # pywin32 returns (rcode, readcount, downloadcount, lastfiletimestamp).
     if not isinstance(result, (tuple, list)) or len(result) != 4:
@@ -109,7 +128,7 @@ def _decode_open(result: Any):
     if rc == -1:
         return rc, "", 0, 0
     if rc != 0:
-        raise CaptureBlocked("JVOPEN_FAILED")
+        api_error("JVOPEN", rc)
     if files < 0 or downloads < 0 or downloads > files:
         raise CaptureBlocked("JVOPEN_COUNTS_INVALID")
     return rc, validate_fromtime(last), files, downloads
@@ -285,8 +304,9 @@ def _capture_locked(root: Path, *, first_from: str | None = None, max_idle: int 
     opened = False
     acquired = False
     try:
-        if com.JVInit(APP_ID) != 0:
-            raise CaptureBlocked("JVINIT_FAILED")
+        init_rc = com.JVInit(local_software_id())
+        if init_rc != 0:
+            api_error("JVINIT", init_rc)
         decoded = _decode_open(com.JVOpen(DATA_SPEC, from_time, 1, 0, 0, ""))
         if decoded[0] == -1:
             return {"status": "NO_NEW_JRA_DATA", "records": 0, "chunks": 0,
