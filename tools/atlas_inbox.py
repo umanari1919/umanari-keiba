@@ -460,6 +460,11 @@ def _jv_store_done_receipt(root: Path, manifest_path: Path, entries: list,
     ingest path; never changes the already committed raw DB content.
     """
     path = _jv_done_receipt_path(root, manifest_path)
+    # A file may have changed after the DB transaction but before this
+    # optional accelerator was written. Never cache such a mismatch.
+    for source_path, expected in entries:
+        if sha256_file(source_path) != expected:
+            raise ImportBlocked("JV_SOURCE_CHANGED_AFTER_COMMIT")
     path.parent.mkdir(parents=True, exist_ok=True)
     write_atomic(path, json.dumps({
         "format": "ATLAS_JV_DONE_V1",
