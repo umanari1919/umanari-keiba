@@ -65,8 +65,8 @@ def timestamp(value, *, optional=False):
 
 
 def setup(root: Path):
-    if root.is_symlink():
-        raise ImportBlocked("ROOT_SYMLINK")
+    if root.is_symlink() or (root / "inbox").is_symlink():
+        raise ImportBlocked("ROOT_OR_INBOX_SYMLINK")
     root.mkdir(parents=True, exist_ok=True)
     for name in ("JRA", "NAR"):
         folder = root / "inbox" / name
@@ -187,11 +187,19 @@ def parse_file(path: Path):
         after.st_size, after.st_mtime_ns, after.st_ino
     ):
         raise ImportBlocked("SOURCE_CHANGED_DURING_READ")
-    return sha256_file(path), before.st_size, items
+    digest = sha256_file(path)
+    after_hash = path.stat()
+    if (before.st_size, before.st_mtime_ns, before.st_ino) != (
+        after_hash.st_size, after_hash.st_mtime_ns, after_hash.st_ino
+    ):
+        raise ImportBlocked("SOURCE_CHANGED_DURING_HASH")
+    return digest, before.st_size, items
 
 
 def snapshot(root: Path, original: Path, expected_sha: str, expected_size: int):
     dest = root / "objects" / expected_sha[:2] / f"{expected_sha}.jsonl"
+    if dest.parent.is_symlink():
+        raise ImportBlocked("ARCHIVE_SYMLINK")
     dest.parent.mkdir(parents=True, exist_ok=True)
     if dest.exists():
         if dest.is_symlink() or sha256_file(dest) != expected_sha:
@@ -326,7 +334,9 @@ def run_once(root: Path, *, commit=False):
         folder = root / "inbox" / organizer
         if folder.is_symlink():
             raise ImportBlocked("INBOX_SYMLINK")
-        for path in sorted(folder.glob("*.jsonl")):
+        for path in sorted(folder.iterdir()):
+            if path.name.startswith(".") or path.name.endswith(".tmp"):
+                continue
             item = auth[organizer]
             event = {"source": organizer, "file_sha256": None, "rows": 0}
             try:
