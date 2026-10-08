@@ -10,7 +10,6 @@ import argparse
 import importlib.util
 import json
 import os
-import platform
 import re
 import shutil
 import struct
@@ -107,7 +106,7 @@ def report(root: Path, *, windows=None, bitness=None,
                 raise ValueError("unexpected dataspec")
             validate_fromtime(obj["lastfiletimestamp"])
             add("JV_CURSOR", "PASS", "前回の取得時刻を確認")
-        except (ValueError, OSError, KeyError, TypeError, Exception) as exc:
+        except Exception:
             # Never display file contents or exception arguments.
             add("JV_CURSOR", "BLOCKED", "取得カーソルが破損・不整合")
     if not os.environ.get("ATLAS_PG_DSN"):
