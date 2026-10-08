@@ -22,9 +22,23 @@ import atlas_inbox as inbox
 CODE = re.compile(r"^[A-Z][A-Z0-9_-]{1,63}$")
 
 
+def probe_jvlink_com():
+    """Opt-in LOCAL COM registration probe; NEVER calls JVInit/JVOpen/JVGets."""
+    if sys.platform != "win32":
+        raise RuntimeError("WINDOWS_REQUIRED")
+    import pythoncom
+    import win32com.client
+    pythoncom.CoInitialize()
+    try:
+        instance = win32com.client.Dispatch("JVDTLab.JVLink")
+        del instance
+    finally:
+        pythoncom.CoUninitialize()
+
+
 def report(root: Path, *, windows=None, bitness=None,
            module_available: Callable[[str], bool] | None = None,
-           pg_check=None) -> dict:
+           pg_check=None, check_com=False, com_probe=None) -> dict:
     if windows is None:
         windows = sys.platform == "win32"
     if bitness is None:
@@ -58,6 +72,28 @@ def report(root: Path, *, windows=None, bitness=None,
         add("PSYCOPG", "BLOCKED", "psycopgがこのPython環境にありません")
     else:
         add("PSYCOPG", "PASS", "psycopg利用可能")
+
+    # Default DOCTOR does not touch COM. Explicit probe only creates/releases
+    # the local registration; never initializes JRA, makes network requests,
+    # downloads records or reads service keys.
+    if not check_com:
+        add("JV_COM_LOCAL", "ACTION_REQUIRED",
+            "COM登録検査は未実行（--check-comで明示確認できます）")
+    elif not windows or bitness != 64:
+        add("JV_COM_LOCAL", "BLOCKED",
+            "JV-Link 64bit COM検査にはWindows 64bit Pythonが必要です")
+    elif not module_available("win32com") or not module_available("pythoncom"):
+        add("JV_COM_LOCAL", "BLOCKED",
+            "pywin32がないためJV-Link COM登録は未確認です")
+    else:
+        try:
+            (com_probe or probe_jvlink_com)()
+            add("JV_COM_LOCAL", "PASS", "JV-Link COM生成に成功（通信・取得は未検査）")
+        except Exception:
+            # COM exceptions may contain registry paths, keys or system details.
+            add("JV_COM_LOCAL", "BLOCKED",
+                "JV-Link COMを作成できません。SDK/bitness/COM登録を確認")
+
 
     try:
         from atlas_jvlink_capture import local_software_id
@@ -166,8 +202,10 @@ def main(argv=None):
         "--root", type=Path,
         default=Path.home() / "Documents" / "NEO-JIZO-ATLAS-DATA",
     )
+    p.add_argument("--check-com", action="store_true",
+                   help="Opt-in local JV-Link COM creation only; no JVInit or network")
     args = p.parse_args(argv)
-    outcome = report(args.root)
+    outcome = report(args.root, check_com=args.check_com)
     print("\n================ NEO JIZO ATLAS — 実機導入前チェック ================")
     for item in outcome["checks"]:
         print(f"{item['status']:<15} {item['code']:<18} {item['detail']}")
