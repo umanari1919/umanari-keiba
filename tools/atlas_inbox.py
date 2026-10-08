@@ -439,7 +439,7 @@ def _jv_can_skip_reimport(root: Path, manifest_path: Path, entries: list,
     path = _jv_done_receipt_path(root, manifest_path)
     if not path.exists():
         return False
-    if path.is_symlink() or path.stat().st_size > 128 * 1024:
+    if path.is_symlink() or path.stat().st_size > 512 * 1024:
         raise ImportBlocked("JV_DONE_RECEIPT_INVALID")
     try:
         receipt = json.loads(path.read_text(encoding="utf-8"))
@@ -549,9 +549,12 @@ def run_once(root: Path, *, commit=False, organizers=None):
                     raise ImportBlocked("JRA_SOURCE_NOT_APPROVED")
                 # One DB query verifies prior committed digests. A local
                 # done receipt additionally detects source metadata changes.
-                if commit and known_jra is not None and _jv_can_skip_reimport(
-                    root, manifest_path, batch, item, known_jra
-                ):
+                fast_duplicate = bool(
+                    commit and known_jra is not None and _jv_can_skip_reimport(
+                        root, manifest_path, batch, item, known_jra
+                    )
+                )
+                if fast_duplicate:
                     outcomes = [
                         (path.name, digest, 0, "DUPLICATE") for path, digest in batch
                     ]
@@ -574,6 +577,7 @@ def run_once(root: Path, *, commit=False, organizers=None):
                     events.append({
                         "source": "JRA", "file_sha256": digest,
                         "rows": count, "status": status,
+                        "fast_duplicate": fast_duplicate,
                     })
             except ImportBlocked as exc:
                 events.extend({
@@ -628,6 +632,7 @@ def run_once(root: Path, *, commit=False, organizers=None):
         "files": len(events),
         "imported": sum(e["status"] == "IMPORTED" for e in events),
         "duplicates": sum(e["status"] == "DUPLICATE" for e in events),
+        "fast_duplicates": sum(bool(e.get("fast_duplicate")) for e in events),
         "blocked": sum(e["status"] == "BLOCKED" for e in events),
         "validated_only": sum(e["status"] == "VALIDATED_ONLY" for e in events),
         "events": events,
