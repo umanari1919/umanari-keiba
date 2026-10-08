@@ -264,6 +264,63 @@ class CaptureTests(unittest.TestCase):
         self.assertEqual(sum(len(inbox.parse_file(p)[2]) for p in outputs), 3)
         self.assertFalse(list((self.root / "work").rglob("*.part")))
 
+    def test_authoritative_sha_lookup_only_queries_requested_hashes(self):
+        """Thousands of historical DB hashes must never be loaded per run."""
+        requested = {f"{i:064x}" for i in range(1100)}
+        source = inbox.load_authorizations(self.root)["JRA"]
+        calls = []
+
+        class Cursor:
+            def __init__(self, rows):
+                self.rows = rows
+            def fetchone(self):
+                return self.rows[0] if self.rows else None
+            def fetchall(self):
+                return self.rows
+
+        class FakeDatabase:
+            def __enter__(self):
+                return self
+            def __exit__(self, *args):
+                return False
+            def execute(self, sql, params):
+                calls.append((sql, params))
+                if "FROM atlas.data_source" in sql:
+                    return Cursor([(42, "JRA", "JV_LINK", "APPROVED_INTERNAL")])
+                self.assert_sql(sql)
+                return Cursor([(d,) for d in params[1]])
+
+            @staticmethod
+            def assert_sql(query):
+                assert "o.object_sha256 = ANY(%s)" in query
+                assert "ORDER BY d.decision_id DESC LIMIT 1" in query
+
+        with patch.object(inbox, "connect_db", return_value=FakeDatabase()):
+            found = inbox._jv_verified_source_digests(source, requested)
+        self.assertEqual(found, requested)
+        batch_sizes = [len(args[1][1]) for args in calls[1:]]
+        self.assertEqual(batch_sizes, [512, 512, 76])
+        self.assertEqual(sum(batch_sizes), len(requested))
+        self.assertEqual(len(calls), 4)  # one rights lookup, three bounded lookups
+
+    def test_empty_sha_request_only_checks_registered_source(self):
+        source = inbox.load_authorizations(self.root)["JRA"]
+        called = []
+        class Cursor:
+            def fetchone(self):
+                return (11, "JRA", "JV_LINK", "APPROVED_INTERNAL")
+        class Db:
+            def __enter__(self):
+                return self
+            def __exit__(self, *args):
+                return False
+            def execute(self, sql, params):
+                called.append(sql)
+                return Cursor()
+        with patch.object(inbox, "connect_db", return_value=Db()):
+            self.assertEqual(inbox._jv_verified_source_digests(source, set()), set())
+        self.assertEqual(len(called), 1)
+
     def test_verified_duplicate_receipt_avoids_rereading_large_raw_history(self):
         jv.capture(self.root, first_from="20261007000000",
                    com_factory=self.fake(FakeJVLink([b"RAabc"])))
