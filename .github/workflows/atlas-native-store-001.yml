@@ -1,0 +1,63 @@
+name: atlas-native-store-001
+
+on:
+  pull_request:
+    paths:
+      - "atlas/sql/001_init.sql"
+      - "atlas/sql/001_contract_test.sql"
+      - "atlas/ARCHITECTURE.md"
+      - ".github/workflows/atlas-native-store-001.yml"
+  push:
+    branches: [main]
+    paths:
+      - "atlas/sql/001_init.sql"
+      - "atlas/sql/001_contract_test.sql"
+      - ".github/workflows/atlas-native-store-001.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  postgres18-contract:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:18
+        env:
+          POSTGRES_USER: atlas_ci
+          POSTGRES_PASSWORD: atlas_ci_test_only
+          POSTGRES_DB: atlas_ci
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U atlas_ci -d atlas_ci"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 8
+    env:
+      PGHOST: 127.0.0.1
+      PGPORT: "5432"
+      PGDATABASE: atlas_ci
+      PGUSER: atlas_ci
+      PGPASSWORD: atlas_ci_test_only
+    steps:
+      - uses: actions/checkout@v4
+      - name: Ensure PostgreSQL client
+        shell: bash
+        run: |
+          if ! command -v psql >/dev/null; then
+            sudo apt-get update -qq
+            sudo apt-get install -y -qq postgresql-client
+          fi
+      - name: Apply fresh schema migration
+        run: psql -X -v ON_ERROR_STOP=1 -f atlas/sql/001_init.sql
+      - name: Apply migration twice (re-entry contract)
+        run: psql -X -v ON_ERROR_STOP=1 -f atlas/sql/001_init.sql
+      - name: Real PostgreSQL constraint and tamper tests (synthetic only)
+        run: psql -X -v ON_ERROR_STOP=1 -f atlas/sql/001_contract_test.sql
+      - name: Check synthetic data was rolled back
+        shell: bash
+        run: |
+          test "$(psql -X -At -c 'SELECT count(*) FROM atlas.data_source')" = 0
+          test "$(psql -X -At -c 'SELECT count(*) FROM atlas.raw_observation')" = 0
+          echo "ATLAS native schema CI: PASS; no user database accessed"
