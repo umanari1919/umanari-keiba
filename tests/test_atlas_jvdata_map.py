@@ -128,6 +128,7 @@ class DbMappingTests(unittest.TestCase):
         inbox.setup(self.root)
         path = self.root / "sources.local.json"
         source = json.loads(path.read_text(encoding="utf-8"))
+        source["JRA"]["source_code"] = "CI_" + self._testMethodName.upper()[:50]
         source["JRA"].update({
             "enabled": True,
             "rights_status": "APPROVED_INTERNAL",
@@ -135,10 +136,20 @@ class DbMappingTests(unittest.TestCase):
         })
         path.write_text(json.dumps(source), encoding="utf-8")
         self.code = source["JRA"]["source_code"]
+        self.batch_number = 0
+        self.race_day = {
+            "test_invalid_record_rolls_back_whole_batch": "20261012",
+            "test_orphan_runner_stays_pending_until_ra_exists": "20261011",
+        }.get(self._testMethodName, "20261010")
         inbox.enroll_sources(self.root)
 
     def ingest(self, raws, *, name="map.jsonl"):
-        destination = self.root / "inbox" / "JRA" / name
+        # Give each test its own race/day, without touching existing CI DB rows.
+        fixed = []
+        for raw in raws:
+            sample = bytearray(raw)
+            write(sample, 12, self.race_day, 8)
+            fixed.append(bytes(sample))
         lines = [
             json.dumps({
                 "native_kind": "JVDATA",
@@ -146,13 +157,28 @@ class DbMappingTests(unittest.TestCase):
                 "payload": envelope(item),
                 "provider_published_at": None,
                 "event_time": None,
-            }) for i, item in enumerate(raws)
+            }) for i, item in enumerate(fixed)
         ]
-        destination.write_text("\n".join(lines) + "\n", encoding="utf-8")
+        content = ("\n".join(lines) + "\n").encode("utf-8")
+        digest = hashlib.sha256(content).hexdigest()
+        name = f"jv_RACE_20261007000000_{self.batch_number:06d}_{digest[:16]}.jsonl"
+        self.batch_number += 1
+        destination = self.root / "inbox" / "JRA" / name
+        destination.write_bytes(content)
+        folder = self.root / "receipts" / "jra_jvlink_batches"
+        folder.mkdir(parents=True, exist_ok=True)
+        (folder / f"batch-{self.batch_number:06d}.json").write_text(json.dumps({
+            "format": "ATLAS_JVLINK_RAW_BATCH_V1",
+            "dataspec": "RACE",
+            "chunks": [{"filename": name, "sha256": digest, "bytes": len(content)}],
+        }), encoding="utf-8")
+        # Actual JV-Link publisher uses a named manifest, not an arbitrary batch key.
+        manifest = folder / f"batch-{self.batch_number:06d}.json"
+        manifest.rename(folder / f"jv_RACE_20261007000000_{digest[:16]}.json")
         age = time.time() - 10
         os.utime(destination, (age, age))
         report = inbox.run_once(self.root, commit=True)
-        self.assertEqual(report["imported"], 1)
+        self.assertEqual(report["imported"], 1, report)
 
     def test_previews_are_read_only_and_full_mapping_is_idempotent(self):
         self.ingest([
