@@ -83,6 +83,27 @@ class DoctorTests(unittest.TestCase):
         self.assertEqual(item["status"], "BLOCKED")
         self.assertNotIn("SENSITIVE_CONNECTION", json.dumps(outcome))
 
+    def test_invalid_sid_blocked_without_disclosing_value(self):
+        secret = " INVALID_PRIVATE_SID"
+        with patch.dict(os.environ, {"ATLAS_JVLINK_SID": secret}):
+            outcome = doctor.report(
+                self.root, windows=True, bitness=64,
+                module_available=lambda name: False,
+            )
+        item = next(c for c in outcome["checks"] if c["code"] == "JV_SOFTWARE_ID")
+        self.assertEqual(item["status"], "BLOCKED")
+        self.assertNotIn(secret, json.dumps(outcome))
+
+    def test_private_development_uses_official_unknown(self):
+        with patch.dict(os.environ, {"ATLAS_JVLINK_SID": "UNKNOWN"}):
+            outcome = doctor.report(
+                self.root, windows=True, bitness=64,
+                module_available=lambda name: False,
+            )
+        item = next(c for c in outcome["checks"] if c["code"] == "JV_SOFTWARE_ID")
+        self.assertEqual(item["status"], "PASS")
+        self.assertFalse(outcome["jvlink_called"])
+
     def test_unknown_sdk_never_claims_live_certification(self):
         outcome = doctor.report(
             self.root, windows=False,
