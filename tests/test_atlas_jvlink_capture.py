@@ -279,6 +279,7 @@ class CaptureTests(unittest.TestCase):
                           side_effect=AssertionError("expensive reparse not permitted")) as expensive:
             result = inbox.run_once(self.root, commit=True, organizers=("JRA",))
         self.assertEqual(result["duplicates"], len(files))
+        self.assertEqual(result["fast_duplicates"], len(files))
         self.assertEqual(result["blocked"], 0)
         expensive.assert_not_called()
 
