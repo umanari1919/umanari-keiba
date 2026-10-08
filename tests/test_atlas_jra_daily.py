@@ -109,6 +109,24 @@ class JraUpdateTests(unittest.TestCase):
         self.assertTrue(db.closed)
         self.assertFalse((self.root / ".jra_daily_update.lock").exists())
 
+    def test_db_error_does_not_expose_credentials_or_contact_jvlink(self):
+        secret = "postgresql://admin:VERY_SECRET@localhost:5433/neo_jizo_atlas"
+        class FailedQuery(FakeCon):
+            def execute(self, statement, params):
+                raise RuntimeError(secret)
+        db = FailedQuery()
+        contacted = []
+        with self.assertRaises(daily.PipelineBlocked) as error:
+            daily.cycle(
+                self.root, db_fn=lambda: db,
+                capture_fn=lambda _: contacted.append("JVInit"),
+            )
+        self.assertEqual(error.exception.reason, "JRA_DB_SOURCE_PREFLIGHT_FAILED")
+        self.assertNotIn("VERY_SECRET", str(error.exception))
+        self.assertEqual(contacted, [])
+        self.assertTrue(db.closed)
+        self.assertFalse((self.root / ".jra_daily_update.lock").exists())
+
     def test_initial_capture_must_exist_and_not_auto_backfill(self):
         (self.root / "receipts" / "jra_jvlink_cursor.json").unlink()
         with self.assertRaisesRegex(daily.PipelineBlocked, "FIRST_JRA_CAPTURE_REQUIRED"):
