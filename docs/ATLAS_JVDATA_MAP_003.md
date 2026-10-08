@@ -63,6 +63,14 @@ JV-Link `RACE`が複数のJSONLファイルへ分割された場合、**全チ�
 
 GitHub Actionsは合成レコードしか扱わず、Windows/Linux 3.13/3.14で固定長・CP932・馬ID・着順・情報漏洩・異常を試す。Ephemeral PostgreSQL 18では、①RAW投入、②プレビューはDB更新なし、③公式RA/SEを新DBへ登録、④再処理ゼロ、⑤RA未着のSEを保留、⑥不正ファイルなら全ロールバックを試験する。
 
+## 2026-10-08：実機導入前の統合監査
+
+- **JVInit：** 個人開発時はJRA-VAN公式の`UNKNOWN`へ統一。正式登録IDはローカルの`ATLAS_JVLINK_SID`で渡す。誤ったSIDはCOM起動前に拒否し、JRA-VANの`-413`等は理由コードだけ記録する。
+- **DB：** `atlas/sql/001_init.sql`と`002_canonical_map.sql`の冒頭にSQLレベルの`current_database() = 'neo_jizo_atlas'`ガードを追加。**旧`mykeibadb`へ直接実行してもDDLに進まない**。CIでは無関係のDBへ同じSQLを適用して拒否されることを確認する。
+- **PRの段階管理：** #61 → #63 → #64 → #65。今はDraftでマージしていない。GitHubのテスト成功は、実機のJV-Link COM・権利・設定・OS自動運用の成功を意味しない。
+- **実機接続時の順番：** まず読取専用`ATLAS-DOCTOR.cmd` → 新DBの接続先確認 → 公式SDKの単発受信 → RA/SE原本のハッシュ照合 → 新DBプレビュー → 許諾済み小規模データだけ登録。長期履歴の一括移行や常駐化はこの合格後。
+- **停止条件：** スキーマ不一致・権利不明・COM `-413`・時刻不明・原本相違・DB接続先相違があれば、誤った成功報告をせず「BLOCKED」とする。自動でDB削除、サービス停止、キー再登録はしない。
+
 ## 次の最優先課題
 
 1. **公式SDK Pythonサンプルと同じ原本**でRA/SE位置・JV-Link COM戻り値のクロス検証（PC実機、許可されたローカル原本のみ）。
