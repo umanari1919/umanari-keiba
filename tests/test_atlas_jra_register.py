@@ -107,5 +107,54 @@ class RegistrationTests(unittest.TestCase):
         self.assertFalse((self.root / "sources.local.json").exists())
 
 
+
+@unittest.skipUnless(__import__("os").environ.get("ATLAS_TEST_POSTGRES"),
+                     "Synthetic ephemeral PostgreSQL 18 CI only")
+class JraRegistryPgTests(unittest.TestCase):
+    def test_scoped_new_db_enrollment_does_not_enroll_nar(self):
+        import os
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            inbox.setup(root)
+            cfg_file = root / "sources.local.json"
+            cfg = json.loads(cfg_file.read_text(encoding="utf-8"))
+            cfg["JRA"].update({
+                "enabled": True,
+                "source_code": "ATLAS_JRA_ONLY_ENROLL_REGRESSION_001",
+                "rights_status": "APPROVED_INTERNAL",
+                "authorization_reference": "SYNTHETIC_PG18_JRA",
+            })
+            cfg["NAR"].update({
+                "enabled": True,
+                "source_code": "ATLAS_NAR_EXCLUDED_REGRESSION_001",
+                "rights_status": "APPROVED_INTERNAL",
+                "authorization_reference": "SYNTHETIC_PG18_NAR",
+            })
+            cfg_file.write_text(json.dumps(cfg), encoding="utf-8")
+            self.assertEqual(
+                register.register(root, apply=True)["status"],
+                "REGISTERED_OR_ALREADY_MATCHED",
+            )
+            self.assertEqual(
+                register.register(root, apply=False)["status"],
+                "JRA_ALREADY_REGISTERED",
+            )
+            with inbox.connect_db() as con:
+                row = con.execute(
+                    "SELECT organizer,adapter_type,rights_status "
+                    "FROM atlas.data_source WHERE source_code=%s",
+                    (cfg["JRA"]["source_code"],),
+                ).fetchone()
+                nar = con.execute(
+                    "SELECT count(*) FROM atlas.data_source WHERE source_code=%s",
+                    (cfg["NAR"]["source_code"],),
+                ).fetchone()[0]
+            self.assertEqual(row, ("JRA", "JV_LINK", "APPROVED_INTERNAL"))
+            self.assertEqual(nar, 0)
+            self.assertEqual(
+                register.register(root, apply=True)["status"],
+                "REGISTERED_OR_ALREADY_MATCHED",
+            )
+
 if __name__ == "__main__":
     unittest.main()
