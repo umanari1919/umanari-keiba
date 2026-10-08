@@ -198,8 +198,10 @@ class CaptureTests(unittest.TestCase):
         jv.capture(self.root, first_from="20261007000000",
                    com_factory=self.fake(FakeJVLink([b"RAabc", b"SEdef"])))
         candidate = next((self.root / "inbox" / "JRA").glob("*.jsonl"))
-        age = time.time() - 10
-        os.utime(candidate, (age, age))
+        # A just-captured, complete batch must work in the SAME one-click cycle.
+        # Loose files still require the two-second stability interval.
+        with self.assertRaisesRegex(inbox.ImportBlocked, "FILE_STILL_WRITING"):
+            inbox.parse_file(candidate)
         good = inbox.run_once(self.root, commit=False)
         self.assertEqual(good["validated_only"], 1)
 
@@ -212,6 +214,18 @@ class CaptureTests(unittest.TestCase):
         manifest.write_bytes(original)
         recovered = inbox.run_once(self.root, commit=False)
         self.assertEqual(recovered["validated_only"], 1)
+
+    def test_just_published_multi_chunk_batch_validates_without_sleep(self):
+        data = FakeJVLink([b"RA" + b"x"*80, b"SE" + b"y"*80, b"HR" + b"z"*80])
+        with patch.object(jv, "CHUNK_MAX_BYTES", 420):
+            captured = jv.capture(
+                self.root, first_from="20261007000000",
+                com_factory=self.fake(data),
+            )
+        self.assertGreaterEqual(captured["chunks"], 2)
+        checked = inbox.run_once(self.root, commit=False, organizers=("JRA",))
+        self.assertEqual(checked["validated_only"], captured["chunks"])
+        self.assertEqual(checked["blocked"], 0)
 
     def test_missing_chunk_in_batch_blocks_other_chunks(self):
         data = FakeJVLink([b"RA" + b"x"*80, b"SE" + b"y"*80, b"HR" + b"z"*80])
