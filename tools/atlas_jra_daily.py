@@ -28,7 +28,10 @@ class PipelineBlocked(Exception):
 
 def cycle(root: Path, *, capture_fn=None, import_fn=None,
           map_fn=None, db_fn=None):
-    inbox.setup(root)
+    try:
+        inbox.setup(root)
+    except inbox.ImportBlocked as exc:
+        raise PipelineBlocked(exc.code) from exc
     lock = root / ".jra_daily_update.lock"
     if lock.is_symlink():
         raise PipelineBlocked("UPDATE_LOCK_SYMLINK")
@@ -87,6 +90,10 @@ def cycle(root: Path, *, capture_fn=None, import_fn=None,
         raise PipelineBlocked(exc.code) from exc
     except mapper.MappingBlocked as exc:
         raise PipelineBlocked(exc.reason) from exc
+    except inbox.ImportBlocked as exc:
+        # An invalid local manifest or ingestion failure is an expected
+        # recoverable hold, not an uncaught traceback or a false success.
+        raise PipelineBlocked(exc.code) from exc
     finally:
         lock.rmdir()
 
