@@ -5,6 +5,9 @@ on:
     paths:
       - "tools/atlas_jvdata_map.py"
       - "tests/test_atlas_jvdata_map.py"
+      - "tests/test_atlas_jra_daily.py"
+      - "tools/atlas_jra_daily.py"
+      - "tools/ATLAS-JRA-UPDATE*.cmd"
       - "atlas/sql/002_canonical_map.sql"
       - ".github/workflows/atlas-jvdata-map-003.yml"
       - "docs/ATLAS_JVDATA_MAP_003.md"
@@ -14,6 +17,8 @@ on:
     paths:
       - "tools/atlas_jvdata_map.py"
       - "tests/test_atlas_jvdata_map.py"
+      - "tests/test_atlas_jra_daily.py"
+      - "tools/atlas_jra_daily.py"
       - ".github/workflows/atlas-jvdata-map-003.yml"
 
 permissions:
@@ -33,9 +38,11 @@ jobs:
         with:
           python-version: ${{ matrix.py }}
       - name: Syntax check
-        run: python -m py_compile tools/atlas_jvdata_map.py tests/test_atlas_jvdata_map.py
+        run: python -m py_compile tools/atlas_jvdata_map.py tools/atlas_jra_daily.py tests/test_atlas_jvdata_map.py tests/test_atlas_jra_daily.py
       - name: Synthetic RA/SE data layout contract tests
         run: python -m unittest discover -s tests -p "test_atlas_jvdata_map.py" -v
+      - name: Synthetic full JRA acquisition-to-DB orchestration
+        run: python -m unittest discover -s tests -p "test_atlas_jra_daily.py" -v
 
   canonical-postgres:
     runs-on: ubuntu-latest
