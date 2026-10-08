@@ -112,6 +112,16 @@ class InboxTests(unittest.TestCase):
         with self.assertRaisesRegex(inbox.ImportBlocked, "RIGHTS_NOT_APPROVED"):
             inbox.run_once(self.root)
 
+    def test_unsupported_file_is_visible_not_silently_ignored(self):
+        p = self.root / "inbox" / "JRA" / "export.csv"
+        p.write_text("race,horse\\nR1,H1\\n", encoding="utf-8")
+        age = time.time() - 10
+        os.utime(p, (age, age))
+        result = inbox.run_once(self.root)
+        self.assertEqual(result["blocked"], 1)
+        self.assertEqual(result["events"][0]["reason"], "UNSUPPORTED_SOURCE_FILE")
+        self.assertTrue(p.exists())
+
     def test_wrong_database_guard(self):
         class FakeCursor:
             def fetchone(self):
