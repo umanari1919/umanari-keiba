@@ -8,6 +8,9 @@ on:
       - "tests/test_atlas_jra_daily.py"
       - "tools/atlas_jra_daily.py"
       - "tools/atlas_doctor.py"
+      - "tools/atlas_db_setup.py"
+      - "tests/test_atlas_db_setup.py"
+      - "tools/ATLAS-DB-*.cmd"
       - "tests/test_atlas_doctor.py"
       - "tools/ATLAS-DOCTOR.cmd"
       - "tools/ATLAS-JRA-UPDATE*.cmd"
@@ -23,6 +26,9 @@ on:
       - "tests/test_atlas_jra_daily.py"
       - "tools/atlas_jra_daily.py"
       - "tools/atlas_doctor.py"
+      - "tools/atlas_db_setup.py"
+      - "tests/test_atlas_db_setup.py"
+      - "tools/ATLAS-DB-*.cmd"
       - "tests/test_atlas_doctor.py"
       - ".github/workflows/atlas-jvdata-map-003.yml"
 
@@ -43,13 +49,15 @@ jobs:
         with:
           python-version: ${{ matrix.py }}
       - name: Syntax check
-        run: python -m py_compile tools/atlas_jvdata_map.py tools/atlas_jra_daily.py tools/atlas_doctor.py tests/test_atlas_jvdata_map.py tests/test_atlas_jra_daily.py tests/test_atlas_doctor.py
+        run: python -m py_compile tools/atlas_jvdata_map.py tools/atlas_jra_daily.py tools/atlas_doctor.py tools/atlas_db_setup.py tests/test_atlas_jvdata_map.py tests/test_atlas_jra_daily.py tests/test_atlas_doctor.py tests/test_atlas_db_setup.py
       - name: Synthetic RA/SE data layout contract tests
         run: python -m unittest discover -s tests -p "test_atlas_jvdata_map.py" -v
       - name: Synthetic full JRA acquisition-to-DB orchestration
         run: python -m unittest discover -s tests -p "test_atlas_jra_daily.py" -v
       - name: Non-invasive one-click environment diagnosis
         run: python -m unittest discover -s tests -p "test_atlas_doctor.py" -v
+      - name: Database bootstrap dry-run safety contracts
+        run: python -m unittest discover -s tests -p "test_atlas_db_setup.py" -v
 
   canonical-postgres:
     runs-on: ubuntu-latest
@@ -96,3 +104,32 @@ jobs:
           psql -X -v ON_ERROR_STOP=1 -f atlas/sql/002_canonical_map.sql
       - name: Synthetic raw receiver to canonical observation integration
         run: python -m unittest discover -s tests -p "test_atlas_jvdata_map.py" -v
+
+  safe-new-db-bootstrap:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:18
+        env:
+          POSTGRES_USER: atlas_ci
+          POSTGRES_PASSWORD: atlas_ci_synthetic
+          POSTGRES_DB: postgres
+        ports: [5432:5432]
+        options: >-
+          --health-cmd "pg_isready -U atlas_ci -d postgres"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 8
+    env:
+      ATLAS_PG_ADMIN_DSN: postgresql://atlas_ci:atlas_ci_synthetic@127.0.0.1:5432/postgres
+      ATLAS_PG_DSN: postgresql://atlas_ci:atlas_ci_synthetic@127.0.0.1:5432/neo_jizo_atlas
+      ATLAS_TEST_BOOTSTRAP: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.14"
+      - name: Install optional local PostgreSQL driver
+        run: python -m pip install "psycopg[binary]==3.3.2"
+      - name: Prove new DB creation, repeat no-op and maintenance DB unchanged
+        run: python -m unittest discover -s tests -p "test_atlas_db_setup.py" -v
