@@ -250,13 +250,22 @@ def connect_db():
         raise ImportBlocked("DB_CONNECTION_OR_DRIVER_UNAVAILABLE") from exc
 
 
-def enroll_sources(root: Path):
+def enroll_sources(root: Path, *, organizers=None):
     auth = load_authorizations(root)
+    if organizers is None:
+        selected = tuple(sorted(SOURCE_CODES))
+    else:
+        selected = tuple(organizers)
+        if (not selected or len(set(selected)) != len(selected)
+                or any(name not in SOURCE_CODES for name in selected)):
+            raise ImportBlocked("SOURCE_SCOPE_INVALID")
+    # A scoped operation cannot accidentally register another organizer.
+    active = [(name, auth[name]) for name in selected if auth[name]["enabled"]]
+    if not active:
+        raise ImportBlocked("NO_ENABLED_APPROVED_SOURCES")
     with connect_db() as con:
         with con.transaction():
-            for organizer, item in sorted(auth.items()):
-                if not item["enabled"]:
-                    continue
+            for organizer, item in active:
                 existing = con.execute(
                     "SELECT organizer, adapter_type, rights_status FROM atlas.data_source WHERE source_code=%s",
                     (item["source_code"],)
