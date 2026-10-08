@@ -1,0 +1,84 @@
+name: atlas-inbox-ingest-001
+
+on:
+  pull_request:
+    paths:
+      - "tools/atlas_inbox.py"
+      - "tools/ATLAS-INBOX-*.cmd"
+      - "tests/test_atlas_inbox.py"
+      - "pyproject.toml"
+      - "docs/ATLAS_INBOX_001.md"
+      - ".github/workflows/atlas-inbox-ingest-001.yml"
+      - "atlas/sql/001_init.sql"
+  push:
+    branches: [main]
+    paths:
+      - "tools/atlas_inbox.py"
+      - "tests/test_atlas_inbox.py"
+      - ".github/workflows/atlas-inbox-ingest-001.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  inbox-offline:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+        py: ["3.13", "3.14"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v6
+        with:
+          python-version: ${{ matrix.py }}
+      - name: Compile local drop-folder receiver
+        run: python -m py_compile tools/atlas_inbox.py tests/test_atlas_inbox.py
+      - name: Synthetic-only offline contracts
+        run: python -m unittest discover -s tests -p "test_atlas_inbox.py" -v
+
+  inbox-postgres:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:18
+        env:
+          POSTGRES_USER: atlas_ci
+          POSTGRES_PASSWORD: atlas_ci_synthetic
+          POSTGRES_DB: neo_jizo_atlas
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U atlas_ci -d neo_jizo_atlas"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 8
+    env:
+      PGHOST: 127.0.0.1
+      PGPORT: "5432"
+      PGDATABASE: neo_jizo_atlas
+      PGUSER: atlas_ci
+      PGPASSWORD: atlas_ci_synthetic
+      ATLAS_PG_DSN: postgresql://atlas_ci:atlas_ci_synthetic@127.0.0.1:5432/neo_jizo_atlas
+      ATLAS_TEST_POSTGRES: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.14"
+      - name: Install pinned PostgreSQL driver
+        run: python -m pip install "psycopg[binary]==3.3.2"
+      - name: PostgreSQL client
+        shell: bash
+        run: |
+          if ! command -v psql >/dev/null; then
+            sudo apt-get update -qq
+            sudo apt-get install -y -qq postgresql-client
+          fi
+      - name: Build isolated new ATLAS database schema
+        run: psql -X -v ON_ERROR_STOP=1 -f atlas/sql/001_init.sql
+      - name: Real database integration using synthetic rows only
+        run: python -m unittest discover -s tests -p "test_atlas_inbox.py" -v
+      - name: Verify no real source data ever entered CI
+        run: psql -X -v ON_ERROR_STOP=1 -c "SELECT count(*) FROM atlas.import_object"
