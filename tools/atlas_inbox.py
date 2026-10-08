@@ -135,13 +135,16 @@ def load_authorizations(root: Path):
     return result
 
 
-def parse_file(path: Path):
+def parse_file(path: Path, *, finalized_manifest=False):
     if path.is_symlink() or not path.is_file() or path.suffix.lower() != ".jsonl":
         raise ImportBlocked("UNSUPPORTED_SOURCE_FILE")
     before = path.stat()
     if before.st_size <= 0 or before.st_size > MAX_FILE_BYTES:
         raise ImportBlocked("FILE_SIZE_INVALID")
-    if time.time_ns() - before.st_mtime_ns < 2_000_000_000:
+    # Without a complete publisher manifest, a fresh loose file may still be
+    # being written. For a finalized JV batch, verify byte size and SHA after
+    # reading instead of relying on age (the atomic .jsonl publish is complete).
+    if not finalized_manifest and time.time_ns() - before.st_mtime_ns < 2_000_000_000:
         raise ImportBlocked("FILE_STILL_WRITING")
     items = []
     keys = set()
@@ -346,7 +349,7 @@ def commit_jv_batch(root: Path, item: dict, entries: list):
     prepared = []
     total_records = 0
     for path, manifest_sha in entries:
-        digest, size, records = parse_file(path)
+        digest, size, records = parse_file(path, finalized_manifest=True)
         if digest != manifest_sha:
             raise ImportBlocked("JV_CHUNK_HASH_MISMATCH")
         if any(row[1] != "JVDATA" for row in records):
@@ -443,7 +446,7 @@ def run_once(root: Path, *, commit=False, organizers=None):
                 else:
                     outcomes = []
                     for path, expected in batch:
-                        digest, size, records = parse_file(path)
+                        digest, size, records = parse_file(path, finalized_manifest=True)
                         if digest != expected:
                             raise ImportBlocked("JV_CHUNK_HASH_MISMATCH")
                         if any(row[1] != "JVDATA" for row in records):
