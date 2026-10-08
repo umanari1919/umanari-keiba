@@ -26,18 +26,18 @@ jobs:
         env:
           POSTGRES_USER: atlas_ci
           POSTGRES_PASSWORD: atlas_ci_test_only
-          POSTGRES_DB: atlas_ci
+          POSTGRES_DB: neo_jizo_atlas
         ports:
           - 5432:5432
         options: >-
-          --health-cmd "pg_isready -U atlas_ci -d atlas_ci"
+          --health-cmd "pg_isready -U atlas_ci -d neo_jizo_atlas"
           --health-interval 10s
           --health-timeout 5s
           --health-retries 8
     env:
       PGHOST: 127.0.0.1
       PGPORT: "5432"
-      PGDATABASE: atlas_ci
+      PGDATABASE: neo_jizo_atlas
       PGUSER: atlas_ci
       PGPASSWORD: atlas_ci_test_only
     steps:
@@ -49,6 +49,14 @@ jobs:
             sudo apt-get update -qq
             sudo apt-get install -y -qq postgresql-client
           fi
+      - name: Wrong-database guard (never create ATLAS tables in unrelated DB)
+        shell: bash
+        run: |
+          if psql -X -v ON_ERROR_STOP=1 -d postgres -f atlas/sql/001_init.sql >/dev/null 2>&1; then
+            echo "::error::ATLAS schema migration wrongly accepted unrelated database"
+            exit 1
+          fi
+          test "$(psql -X -At -d postgres -c "SELECT to_regnamespace('atlas') IS NULL")" = "t"
       - name: Apply fresh schema migration
         run: psql -X -v ON_ERROR_STOP=1 -f atlas/sql/001_init.sql
       - name: Apply migration twice (re-entry contract)
