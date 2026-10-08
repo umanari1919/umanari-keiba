@@ -45,7 +45,7 @@ def _parse_dsn(value: str, database: str):
         hostname not in {"localhost", "127.0.0.1", "::1"}
         or port is None or not (1 <= port <= 65535)
         or not username or not dbname or dbname != database
-        or u.fragment or not u.password or u.query
+        or u.fragment or u.query
     ):
         raise SetupBlocked("DATABASE_DSN_LOCAL_OR_DBNAME_MISMATCH")
     return hostname, port, username
