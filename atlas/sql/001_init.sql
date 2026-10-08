@@ -3,6 +3,14 @@
 -- Never execute this file against mykeibadb or any other existing user database.
 -- No implicit adapter promotion and no license to redistribute source records.
 BEGIN;
+DO $atlas_db_guard$
+BEGIN
+  IF current_database() <> 'neo_jizo_atlas' THEN
+    RAISE EXCEPTION 'ATLAS_WRONG_DATABASE: expected neo_jizo_atlas, received %', current_database()
+      USING ERRCODE = '42501';
+  END IF;
+END
+$atlas_db_guard$;
 CREATE SCHEMA IF NOT EXISTS atlas;
 
 CREATE TABLE IF NOT EXISTS atlas.data_source (
