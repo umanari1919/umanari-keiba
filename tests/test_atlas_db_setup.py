@@ -34,6 +34,13 @@ class SetupSafetyTests(unittest.TestCase):
         with self.assertRaisesRegex(setup.SetupBlocked, "MISMATCH"):
             setup.connection_settings(bad_admin, self.TARGET)
 
+    def test_dsn_password_is_optional_when_libpq_secret_file_is_used(self):
+        admin = "postgresql://atlas_user@localhost:5433/postgres"
+        atlas = "postgresql://atlas_user@localhost:5433/neo_jizo_atlas"
+        result = setup.connection_settings(admin, atlas)
+        self.assertEqual(result["target_database"], "neo_jizo_atlas")
+        self.assertEqual(result["local_endpoint"], "localhost:5433")
+
     def test_only_explicit_localhost_same_user_and_port(self):
         for admin, target in (
             (self.ADMIN, self.TARGET.replace(":5433/", ":5432/")),
