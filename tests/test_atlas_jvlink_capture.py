@@ -152,6 +152,36 @@ class CaptureTests(unittest.TestCase):
                        monotonic=lambda: next(ticks), sleep=lambda x: None)
         self.assertFalse((self.root / "receipts" / "jra_jvlink_cursor.json").exists())
 
+    def test_overlapping_capture_is_refused(self):
+        (self.root / ".jra_jvlink_capture.lock").mkdir()
+        with self.assertRaisesRegex(jv.CaptureBlocked, "CAPTURE_ALREADY_RUNNING"):
+            jv.capture(self.root, first_from="20261007000000",
+                       com_factory=self.fake(FakeJVLink([b"RAabc"])))
+        self.assertFalse((self.root / "receipts" / "jra_jvlink_cursor.json").exists())
+
+    def test_chunked_publication_never_overwrites_existing_data(self):
+        data = FakeJVLink([b"RA" + b"x"*80, b"SE" + b"y"*80, b"HR" + b"z"*80])
+        with patch.object(jv, "CHUNK_MAX_BYTES", 420):
+            report = jv.capture(self.root, first_from="20261007000000",
+                                com_factory=self.fake(data))
+        self.assertGreaterEqual(report["chunks"], 2)
+        outputs = list((self.root / "inbox" / "JRA").glob("*.jsonl"))
+        self.assertEqual(len(outputs), report["chunks"])
+        self.assertEqual(sum(inbox.parse_file(p)[2].__len__() for p in outputs), 3)
+        self.assertFalse(list((self.root / "work").rglob("*.part")))
+
+    def test_crash_safe_publish_is_content_addressed(self):
+        with tempfile.TemporaryDirectory(dir=self.root) as work:
+            src = Path(work) / "test.part"
+            src.write_bytes(inbox.json_bytes({
+                "native_kind": "JVDATA", "native_key": "JV-0000000001",
+                "payload": {"synthetic": True}
+            }) + b"\n")
+            a = jv._publish(self.root, [src], "20261007000000")
+            b = jv._publish(self.root, [src], "20261007000000")
+            self.assertEqual(a, b)
+            self.assertEqual(len(list((self.root / "inbox" / "JRA").glob("*.jsonl"))), 1)
+
     def test_closed_failure_does_not_advance(self):
         obj = FakeJVLink([b"RAabc"], close=-100)
         with self.assertRaisesRegex(jv.CaptureBlocked, "JVCLOSE_FAILED"):
