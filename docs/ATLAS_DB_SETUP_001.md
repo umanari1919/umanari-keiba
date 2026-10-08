@@ -31,6 +31,15 @@ ATLAS_PG_DSN       = postgresql://atlas_user@localhost:5433/neo_jizo_atlas
 - SQL自体にも`current_database() = 'neo_jizo_atlas'`チェックがあり、`mykeibadb`へ誤って送った場合はDDL前に拒否する。
 - 自動バックフィル、JRA取得開始、NAR接続、ユーザーDBの読み取りや書き換えは、この初期化ツールでは行わない。
 
+## 2026-10-08追加：GitHub Actions起動障害に依存しない実機前診断
+
+GitHub PR #65は`startup_failure`/`BuildFailed`/`0 jobs`のため、最新コミットのWindows/Linux CIはまだ実行できていない。**「テスト合格」と表示することは禁止。** 過去の成功CIと区別する。これに備え、実機では次の二つを独立してチェックできるようにした。
+
+- `tools/ATLAS-JRA-COM-CHECK.cmd`：**ローカルCOM登録だけ**をダブルクリックで調べる。JV-Linkの`JVDTLab.JVLink` COMオブジェクトを生成・解放するが、`JVInit/JVOpen/JVGets`は**一切呼ばない**。通信・契約・実データ取得を確認するものではない。`ATLAS-DOCTOR`の`JV_COM_LOCAL`欄に結果が出る。ほかのDB設定がBLOCKEDでも、この欄は独立に確認可能。
+- `tools/ATLAS-OFFLINE-SELFTEST.cmd`：**合成レコードだけの7スイート**を同じPCのPythonで実行。子プロセスから`ATLAS_PG_DSN`・`ATLAS_PG_ADMIN_DSN`・PostgreSQL資格情報・JRA-VANのソフトID・実DBテストフラグを外す。旧DB、新DB、SDKの取得関数には接続しない。失敗があれば直ちにBLOCKEDとして終了する。
+
+**これは新しいPCやサービスへ勝手に展開したものではない**。GitHubのブランチに実装された診断コードを、実機導入レビュー後に使用する。ローカルのコードが最新になっていなければ起動ファイルは存在しない。
+
 ### コード位置
 
 - `tools/atlas_db_setup.py`：読み取り専用チェックと明示的な初期化処理。
