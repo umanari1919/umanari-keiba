@@ -24,7 +24,7 @@
 ## 自動化の境界と運用
 
 - `tools/atlas_jvdata_map.py`：デフォルト**読み取りプレビュー**。実DB登録は`--apply`明示指定のみ。接続は`ATLAS_PG_DSN`で、接続先データベース名が`neo_jizo_atlas`でない場合は既存のINBOX側が拒否する。
-- `--source-code`必須。登録済みソースが`JRA`、`JV_LINK`、現時点と取り込み時点で**権利承認済み**、かつ元原本が`VALIDATED`でなければ変換しない。
+- 登録済みソースが`JRA`、`JV_LINK`、現時点と取り込み時点で**権利承認済み**、かつ元原本が`VALIDATED`でなければ変換しない。CLIでは`--source-code`または`--local-jra`を選択。後者は`ドキュメント/NEO-JIZO-ATLAS-DATA/sources.local.json`の許可済みJRA登録だけを使い、IDを毎回入力しなくてよい。
 - 同一原本を複数回適用しないため`atlas/sql/002_canonical_map.sql`で`canonicalization_batch`を追加。マッピング結果と件数は追記専用。
 - **RA→SE順**で同一ファイルの収録順序が乱れても関連付けできる。SEだけ来た場合はRAが先に届くまで保留し、二度目のスキャンで再試行できる。
 - 完全な検証が終わるまでDB変更はしない。異常レコード一件でも発見されたら、そのオブジェクトは**全体をロールバック**する。
@@ -37,6 +37,13 @@
 - JRA-VAN公式[JV-Data仕様書 Ver.4.9.0.1](https://jra-van.jp/dlb/sdv/sdk/JV-Data4901.pdf)（PDFページ10: RA, 11: SE）。**文字列ではなくバイトオフセット**で解釈する。
 - [SDK最新版](https://developer.jra-van.jp/t/topic/45) 5.0.0（2026/8/4）のJV-Data構造体/Python 3.14版と実機でクロス検証するまでは、解析器の正式性を確定しない。
 - [公式レッスン：JV-Data内容の読み出し](https://developer.jra-van.jp/t/topic/605)：独自の文字分割ではなくSDKの構造体との照合を推奨する。構造体はSDKからユーザーのWindows端末上でのみ取得し、GitHubへ転載しない。
+
+## 日常の簡単な操作（PC実機SDK検証・事前設定後）
+
+- `tools/ATLAS-JRA-MAP-PREVIEW.cmd` をダブルクリック：**読取専用**で未処理原本の変換可能件数・理由を確認。
+- `tools/ATLAS-JRA-MAP-APPLY.cmd` をダブルクリック：`ATLAS_PG_DSN`が**新DB**を指し、JRA権利登録とINBOX検証が済んだ場合だけ、最大10バッチを型付きテーブルへ追加。
+- 多量の過去原本がある場合は10バッチずつ継続処理。将来は監督プロセスがキューを繰り返し走査する方式にする。
+- JRA取得・RAW投入が未完了なら変換はできない。ファイルを手で改造して例外を通すことは禁止。
 
 ## 最初の試験
 
