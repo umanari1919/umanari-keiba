@@ -375,12 +375,18 @@ def _ready_jv_batches(root: Path):
     return ready
 
 
-def run_once(root: Path, *, commit=False):
+def run_once(root: Path, *, commit=False, organizers=None):
     setup(root)
     auth = load_authorizations(root)
     jv_ready = _ready_jv_batches(root)
+    if organizers is None:
+        selected = sorted(SOURCE_CODES)
+    else:
+        selected = list(organizers)
+        if not selected or len(set(selected)) != len(selected) or any(x not in SOURCE_CODES for x in selected):
+            raise ImportBlocked("SOURCE_SCOPE_INVALID")
     events = []
-    for organizer in sorted(SOURCE_CODES):
+    for organizer in selected:
         folder = root / "inbox" / organizer
         if folder.is_symlink():
             raise ImportBlocked("INBOX_SYMLINK")
