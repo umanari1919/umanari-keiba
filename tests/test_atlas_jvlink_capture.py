@@ -411,6 +411,40 @@ class PgIntegration(CaptureTests):
             ).fetchone()[0]
         self.assertEqual(rows-before, 3)
 
+    def test_later_rejection_invalidates_accelerated_duplicate_cache(self):
+        config = self.root / "sources.local.json"
+        auth = json.loads(config.read_text(encoding="utf-8"))
+        auth["JRA"]["source_code"] = "ATLAS_JRA_CI_REJECTED_FAST"
+        config.write_text(json.dumps(auth), encoding="utf-8")
+        inbox.enroll_sources(self.root)
+        jv.capture(
+            self.root, first_from="20261007000000",
+            com_factory=self.fake(FakeJVLink([b"RAabc"])),
+        )
+        first = inbox.run_once(self.root, commit=True, organizers=("JRA",))
+        self.assertEqual(first["imported"], 1)
+        repeat = inbox.run_once(self.root, commit=True, organizers=("JRA",))
+        self.assertEqual(repeat["duplicates"], 1)
+
+        with inbox.connect_db() as con:
+            con.execute(
+                "INSERT INTO atlas.ingest_decision "
+                "(object_id,decision,validated_record_count,"
+                "quarantined_record_count,policy_version) "
+                "SELECT o.object_id, 'REJECTED', 0, 1, 'SYNTHETIC_REVOCATION' "
+                "FROM atlas.import_object o "
+                "JOIN atlas.data_source s ON s.source_id=o.source_id "
+                "WHERE s.source_code=%s",
+                (auth["JRA"]["source_code"],),
+            )
+        # Old VALIDATED decision still exists, but latest REJECTED must win.
+        blocked = inbox.run_once(self.root, commit=True, organizers=("JRA",))
+        self.assertEqual(blocked["duplicates"], 0)
+        self.assertEqual(blocked["blocked"], 1)
+        self.assertEqual(
+            blocked["events"][0]["reason"], "EXISTING_BATCH_UNVERIFIED"
+        )
+
     def test_capture_approved_source_can_commit_and_dedup(self):
         inbox.enroll_sources(self.root)
         jv.capture(self.root, first_from="20261007000000",
