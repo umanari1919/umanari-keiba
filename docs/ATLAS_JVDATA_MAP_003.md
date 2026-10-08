@@ -40,6 +40,9 @@
 
 ## 日常の簡単な操作（PC実機SDK検証・事前設定後）
 
+- **一括更新**：初回JRA取得が完了した後、`tools/ATLAS-JRA-UPDATE.cmd` のダブルクリック1回で「JV-Link差分受信 → JRA専用INBOX投入 → RA/SEを新DBへ登録」を順序通り実施。取り込み前に、新DBへの接続と許諾を検査する。
+- **有人セッション中の自動更新**：`tools/ATLAS-JRA-UPDATE-WATCH.cmd`を実行し、60分ごとに同じ処理を繰り返す。**タスク/サービスの登録は行わない**。ほかの`ATLAS-JRA-WATCH.cmd`と同時に起動しないこと。
+- どちらも新DB接続の`ATLAS_PG_DSN`、`sources.local.json`承認、JRA-VAN SDK/pywin32導入、初回受信カーソル、正規化DDL適用が前提。まだWindowsでの実データ動作保証はない。
 - `tools/ATLAS-JRA-MAP-PREVIEW.cmd` をダブルクリック：**読取専用**で未処理原本の変換可能件数・理由を確認。
 - `tools/ATLAS-JRA-MAP-APPLY.cmd` をダブルクリック：`ATLAS_PG_DSN`が**新DB**を指し、JRA権利登録とINBOX検証が済んだ場合だけ、最大10バッチを型付きテーブルへ追加。
 - 多量の過去原本がある場合は10バッチずつ継続処理。将来は監督プロセスがキューを繰り返し走査する方式にする。
