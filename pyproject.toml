@@ -25,6 +25,10 @@ model = [
 mlops = [
   "mlflow==3.16.0",
 ]
+# Explicit install only. Rights-approved ATLAS inbox -> new PG database.
+ingest = [
+  "psycopg[binary]==3.3.2",
+]
 dev = [
   "ruff==0.16.8",
   "pytest==9.1.0",
