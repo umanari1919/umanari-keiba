@@ -230,17 +230,38 @@ def _publish(root: Path, temp_files: list[Path], from_time: str):
         digest = inbox.sha256_file(part)
         name = f"jv_RACE_{from_time}_{index:06d}_{digest[:16]}.jsonl"
         dest = target / name
-        if dest.exists():
+        try:
+            # Atomic create-without-clobber, on the same local volume.
+            os.link(part, dest)
+        except FileExistsError:
             if dest.is_symlink() or inbox.sha256_file(dest) != digest:
-                raise CaptureBlocked("PUBLISHED_FILE_CONFLICT")
-        else:
-            os.replace(part, dest)  # must remain on the same filesystem
+                raise CaptureBlocked("PUBLISHED_FILE_CONFLICT") from None
+        except OSError as exc:
+            # Hardlinks avoid exposing a partial .jsonl file to inbox watcher.
+            raise CaptureBlocked("PUBLISH_ATOMIC_LINK_FAILED") from exc
         out.append(digest)
     return out
 
 
 def capture(root: Path, *, first_from: str | None = None, max_idle: int = 900,
             com_factory=None, monotonic=time.monotonic, sleep=time.sleep):
+    inbox.setup(root)
+    lock = root / ".jra_jvlink_capture.lock"
+    if lock.is_symlink():
+        raise CaptureBlocked("CAPTURE_LOCK_SYMLINK")
+    try:
+        lock.mkdir()
+    except FileExistsError as exc:
+        raise CaptureBlocked("CAPTURE_ALREADY_RUNNING_OR_STALE_LOCK") from exc
+    try:
+        return _capture_locked(root, first_from=first_from, max_idle=max_idle,
+                               com_factory=com_factory, monotonic=monotonic, sleep=sleep)
+    finally:
+        lock.rmdir()
+
+
+def _capture_locked(root: Path, *, first_from: str | None = None, max_idle: int = 900,
+                    com_factory=None, monotonic=time.monotonic, sleep=time.sleep):
     if type(max_idle) is not int or not 1 <= max_idle <= MAX_POLL_SECONDS:
         raise CaptureBlocked("INVALID_POLL_LIMIT")
     inbox.setup(root)
@@ -323,20 +344,43 @@ def main(argv=None):
                         default=Path.home() / "Documents" / "NEO-JIZO-ATLAS-DATA")
     parser.add_argument("--capture", action="store_true",
                         help="Opt in to licensed JV-Link network retrieval")
+    parser.add_argument("--watch", action="store_true",
+                        help="Repeat locally on a timer; requires --capture and active terminal session")
+    parser.add_argument("--interval", type=int, default=3600)
     parser.add_argument("--first-from", help="One-time initial 14-digit JV-Link timestamp")
     parser.add_argument("--max-idle", type=int, default=900)
     args = parser.parse_args(argv)
     if not args.capture:
         print("ATLAS JV-Link: 未実行。取得には --capture が必要です。")
         return 0
-    try:
-        result = capture(args.root, first_from=args.first_from, max_idle=args.max_idle)
-        print(f"JRA取得: {result['status']} / {result['records']}件 / {result['chunks']}分割")
-        print("ATLAS原本受信のみ。レース・出走表への変換とDB登録は別工程です。")
-        return 0
-    except CaptureBlocked as exc:
-        print(f"JRA取得保留: {exc.code}", file=sys.stderr)
+    if args.watch and not 300 <= args.interval <= 86400:
+        print("JRA取得保留: INTERVAL_INVALID", file=sys.stderr)
         return 2
+    initial = args.first_from
+    try:
+        while True:
+            try:
+                result = capture(args.root, first_from=initial, max_idle=args.max_idle)
+                print(f"JRA取得: {result['status']} / {result['records']}件 / {result['chunks']}分割", flush=True)
+                if result["status"] == "CAPTURED_RAW_IN_INBOX":
+                    initial = None  # persistent cursor replaces one-time seed
+            except CaptureBlocked as exc:
+                print(f"JRA取得保留: {exc.code}", file=sys.stderr, flush=True)
+                if not args.watch:
+                    return 2
+                # Configuration/rights problems should never trigger a network retry loop.
+                if exc.code in {"JRA_SOURCE_NOT_APPROVED", "JRA_NOT_A_JVLINK_SOURCE",
+                                "CURSOR_CORRUPT", "CURSOR_INVALID", "FIRST_FROM_REQUIRED",
+                                "JVLINK_REQUIRES_WINDOWS", "PYWIN32_MISSING",
+                                "JVLINK_COM_NOT_AVAILABLE", "SOURCE_CONFIG_INVALID",
+                                "SOURCE_CONFIG_INCOMPLETE", "CAPTURE_ALREADY_RUNNING_OR_STALE_LOCK"}:
+                    return 2
+            if not args.watch:
+                return 0
+            time.sleep(args.interval)
+    except KeyboardInterrupt:
+        print("JRA監視を停止しました")
+        return 0
 
 
 if __name__ == "__main__":
