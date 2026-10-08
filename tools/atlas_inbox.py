@@ -326,9 +326,59 @@ def commit_records(root: Path, organizer: str, item: dict, path: Path, digest: s
             return "IMPORTED"
 
 
+JV_FILE = re.compile(r"^jv_RACE_[0-9]{14}_[0-9]{6}_[0-9a-f]{16}[.]jsonl$")
+
+
+def _ready_jv_batches(root: Path):
+    """Never admit *any* JV chunk before ALL chunks in its manifest are present."""
+    folder = root / "receipts" / "jra_jvlink_batches"
+    if folder.is_symlink():
+        raise ImportBlocked("JV_MANIFEST_DIR_SYMLINK")
+    if not folder.exists():
+        return {}
+    ready = {}
+    for manifest_path in sorted(folder.glob("jv_RACE_*.json")):
+        if manifest_path.is_symlink() or manifest_path.stat().st_size > 1_000_000:
+            raise ImportBlocked("JV_MANIFEST_UNSAFE")
+        try:
+            manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+            if (manifest.get("format") != "ATLAS_JVLINK_RAW_BATCH_V1"
+                    or manifest.get("dataspec") != "RACE"):
+                raise ValueError("manifest schema")
+            chunks = manifest.get("chunks")
+            if not isinstance(chunks, list) or not 1 <= len(chunks) <= 1024:
+                raise ValueError("manifest chunk list")
+            verified = {}
+            for part in chunks:
+                if not isinstance(part, dict) or set(part) != {"filename", "sha256", "bytes"}:
+                    raise ValueError("manifest chunk")
+                name, digest, size = part["filename"], part["sha256"], part["bytes"]
+                if (not isinstance(name, str) or not JV_FILE.fullmatch(name)
+                        or not isinstance(digest, str) or not re.fullmatch(r"[0-9a-f]{64}", digest)
+                        or type(size) is not int or not 0 < size <= MAX_FILE_BYTES):
+                    raise ValueError("manifest chunk fields")
+                if name in verified:
+                    raise ValueError("duplicate file")
+                source = root / "inbox" / "JRA" / name
+                if source.is_symlink() or not source.is_file() or source.stat().st_size != size:
+                    raise ValueError("chunk unavailable")
+                verified[name] = digest
+            for name, digest in verified.items():
+                if name in ready and ready[name] != digest:
+                    raise ImportBlocked("JV_MANIFEST_CONFLICT")
+            ready.update(verified)
+        except ImportBlocked:
+            raise
+        except (OSError, ValueError, TypeError, AttributeError):
+            # Incomplete or corrupt batch is not admitted. The file stays on disk.
+            continue
+    return ready
+
+
 def run_once(root: Path, *, commit=False):
     setup(root)
     auth = load_authorizations(root)
+    jv_ready = _ready_jv_batches(root)
     events = []
     for organizer in sorted(SOURCE_CODES):
         folder = root / "inbox" / organizer
@@ -345,7 +395,14 @@ def run_once(root: Path, *, commit=False):
                 if (item.get("rights_status") not in APPROVED or
                         len(item.get("authorization_reference", "").strip()) < 8):
                     raise ImportBlocked("RIGHTS_NOT_APPROVED")
+                if organizer == "JRA" and JV_FILE.fullmatch(path.name) and path.name not in jv_ready:
+                    raise ImportBlocked("JV_BATCH_NOT_FINALIZED")
                 digest, size, records = parse_file(path)
+                if organizer == "JRA":
+                    if any(row[1] == "JVDATA" for row in records) and path.name not in jv_ready:
+                        raise ImportBlocked("JV_BATCH_NOT_FINALIZED")
+                    if path.name in jv_ready and jv_ready[path.name] != digest:
+                        raise ImportBlocked("JV_CHUNK_HASH_MISMATCH")
                 event["file_sha256"] = digest
                 event["rows"] = len(records)
                 event["status"] = (
