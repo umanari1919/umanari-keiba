@@ -376,6 +376,96 @@ def commit_jv_batch(root: Path, item: dict, entries: list):
 JV_FILE = re.compile(r"^jv_RACE_[0-9]{14}_[0-9]{6}_[0-9a-f]{16}[.]jsonl$")
 
 
+def _jv_verified_source_digests(item: dict):
+    """One DB check per scan, not one query per historical file.
+
+    Cached receipts alone are NEVER authoritative: if a database is restored
+    without a committed batch, the missing SHA must be re-imported.
+    """
+    try:
+        with connect_db() as con:
+            source = con.execute(
+                "SELECT source_id,organizer,adapter_type,rights_status "
+                "FROM atlas.data_source WHERE source_code=%s",
+                (item["source_code"],),
+            ).fetchone()
+            if (not source or source[1] != "JRA" or source[2] != "JV_LINK"
+                    or source[3] not in APPROVED
+                    or source[3] != item.get("rights_status")):
+                raise ImportBlocked("SOURCE_NOT_REGISTERED_OR_REVOKED")
+            rows = con.execute(
+                "SELECT o.object_sha256 FROM atlas.import_object o "
+                "WHERE o.source_id=%s "
+                "AND EXISTS (SELECT 1 FROM atlas.ingest_decision d "
+                "  WHERE d.object_id=o.object_id AND d.decision='VALIDATED')",
+                (source[0],),
+            ).fetchall()
+            return {row[0] for row in rows}
+    except ImportBlocked:
+        raise
+    except Exception as exc:
+        raise ImportBlocked("JV_DB_INDEX_UNAVAILABLE") from exc
+
+
+def _jv_done_receipt_path(root: Path, manifest_path: Path):
+    parent = root / "receipts" / "jra_jvlink_done"
+    if parent.is_symlink():
+        raise ImportBlocked("JV_DONE_RECEIPT_SYMLINK")
+    # The publisher-generated manifest name has already been selected by a glob.
+    if not re.fullmatch(r"jv_RACE_[0-9]{14}_[0-9a-f]{16}[.]json", manifest_path.name):
+        raise ImportBlocked("JV_MANIFEST_NAME_INVALID")
+    return parent / manifest_path.name
+
+
+def _jv_batch_fingerprint(manifest_path: Path, entries: list):
+    digest = sha256_file(manifest_path)
+    files = []
+    for path, expected in entries:
+        if path.is_symlink() or not path.is_file():
+            raise ImportBlocked("JV_ARCHIVE_SOURCE_UNAVAILABLE")
+        st = path.stat()
+        files.append({
+            "file": path.name, "sha256": expected,
+            "bytes": st.st_size, "mtime_ns": st.st_mtime_ns,
+            "ctime_ns": st.st_ctime_ns,
+        })
+    return {"manifest_sha256": digest, "files": files}
+
+
+def _jv_can_skip_reimport(root: Path, manifest_path: Path, entries: list,
+                          item: dict, known_digests: set):
+    """Fast duplicate path ONLY when local metadata and ATLAS DB both agree."""
+    path = _jv_done_receipt_path(root, manifest_path)
+    if not path.exists():
+        return False
+    if path.is_symlink() or path.stat().st_size > 128 * 1024:
+        raise ImportBlocked("JV_DONE_RECEIPT_INVALID")
+    try:
+        receipt = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError) as exc:
+        raise ImportBlocked("JV_DONE_RECEIPT_INVALID") from exc
+    if (receipt.get("source_code") != item.get("source_code")
+            or any(expected not in known_digests for _, expected in entries)):
+        return False
+    return receipt.get("fingerprint") == _jv_batch_fingerprint(manifest_path, entries)
+
+
+def _jv_store_done_receipt(root: Path, manifest_path: Path, entries: list,
+                            item: dict):
+    """Advisory acceleration index written ONLY after committed import.
+
+    If writing this receipt fails, a future scan repeats the safe standard
+    ingest path; never changes the already committed raw DB content.
+    """
+    path = _jv_done_receipt_path(root, manifest_path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    write_atomic(path, json.dumps({
+        "format": "ATLAS_JV_DONE_V1",
+        "source_code": item["source_code"],
+        "fingerprint": _jv_batch_fingerprint(manifest_path, entries),
+    }, ensure_ascii=False, sort_keys=True, separators=(",", ":")))
+
+
 def _ready_jv_batches(root: Path):
     """Read complete publisher manifests. Any missing part blocks the WHOLE batch."""
     folder = root / "receipts" / "jra_jvlink_batches"
@@ -412,7 +502,9 @@ def _ready_jv_batches(root: Path):
                     raise ValueError("chunk unavailable")
                 verified[name] = digest
             ready.update(verified)
-            batches.append([(root / "inbox" / "JRA" / n, d) for n, d in verified.items()])
+            batches.append((manifest_path, [
+                (root / "inbox" / "JRA" / n, d) for n, d in verified.items()
+            ]))
         except ImportBlocked:
             raise
         except (OSError, ValueError, TypeError, AttributeError):
@@ -433,16 +525,35 @@ def run_once(root: Path, *, commit=False, organizers=None):
             raise ImportBlocked("SOURCE_SCOPE_INVALID")
     events = []
     handled = set()
+    known_jra = None
+    if commit and "JRA" in selected and jv_batches and auth["JRA"]["enabled"]:
+        try:
+            known_jra = _jv_verified_source_digests(auth["JRA"])
+        except ImportBlocked:
+            # Fail closed: normal transactional import still checks rights
+            # and connection. Never rely on local advisory receipts alone.
+            known_jra = None
     if "JRA" in selected:
-        for batch in jv_batches:
+        for manifest_path, batch in jv_batches:
             try:
                 item = auth["JRA"]
                 if (not item["enabled"] or item.get("rights_status") not in APPROVED
                         or len(item.get("authorization_reference", "").strip()) < 8):
                     raise ImportBlocked("JRA_SOURCE_NOT_APPROVED")
-                # Even a one-chunk manifest follows the exact same all-or-none protocol.
-                if commit:
+                # One DB query verifies prior committed digests. A local
+                # done receipt additionally detects source metadata changes.
+                if commit and known_jra is not None and _jv_can_skip_reimport(
+                    root, manifest_path, batch, item, known_jra
+                ):
+                    outcomes = [
+                        (path.name, digest, 0, "DUPLICATE") for path, digest in batch
+                    ]
+                elif commit:
                     outcomes = commit_jv_batch(root, item, batch)
+                    try:
+                        _jv_store_done_receipt(root, manifest_path, batch, item)
+                    except (ImportBlocked, OSError, ValueError):
+                        pass  # Receipt is only an optimization, never commit evidence.
                 else:
                     outcomes = []
                     for path, expected in batch:
