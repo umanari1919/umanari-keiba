@@ -44,12 +44,19 @@ def cycle(root: Path, *, capture_fn=None, import_fn=None,
         code = mapper.local_jra_source(root)
         if not jv._read_checkpoint(root):
             raise PipelineBlocked("FIRST_JRA_CAPTURE_REQUIRED")
-        # Verify the fresh isolated ATLAS database BEFORE contacting JV-Link.
+        # Verify BOTH new database and rights-approved JRA source before
+        # contacting JV-Link. Being able to connect is not sufficient:
+        # an unregistered/revoked source must not trigger provider traffic.
         try:
             con = (db_fn or inbox.connect_db)()
-            con.close()
+            try:
+                mapper.source_ready(con, code)
+            finally:
+                con.close()
         except inbox.ImportBlocked as exc:
             raise PipelineBlocked(exc.code) from exc
+        except mapper.MappingBlocked as exc:
+            raise PipelineBlocked(exc.reason) from exc
         incoming = (capture_fn or jv.capture)(root)
         if incoming.get("status") not in {"CAPTURED_RAW_IN_INBOX", "NO_NEW_JRA_DATA"}:
             raise PipelineBlocked("CAPTURE_STATUS_UNEXPECTED")
