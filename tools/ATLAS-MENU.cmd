@@ -15,17 +15,19 @@ echo   [4] 新DBの準備状況を確認（変更なし）
 echo.
 echo   【実行処理】権利・環境の承認後のみ
 echo   [5] 新しいATLAS専用DBを作成（CREATE入力が必要）
-echo   [6] JRA初回取得（許諾済みSDK・起点日時が必要）
-echo   [7] JRA取得からDB登録まで一括更新
-echo   [8] JRAを60分ごとに更新（画面を開いたまま）
+echo   [6] JRA取得元を新DBに登録（許諾確認・REGISTER入力）
+echo   [7] JRA初回取得（許諾済みSDK・起点日時が必要）
+echo   [8] JRA取得からDB登録まで一括更新
+echo   [9] JRAを60分ごとに更新（画面を開いたまま）
 echo.
 echo   [Q] 終了
 echo.
-choice /C 12345678Q /N /M "操作を選んでください: "
-if errorlevel 9 goto ATLAS_EXIT
-if errorlevel 8 goto ATLAS_WATCH
-if errorlevel 7 goto ATLAS_ONCE
-if errorlevel 6 goto ATLAS_CAPTURE
+choice /C 123456789Q /N /M "操作を選んでください: "
+if errorlevel 10 goto ATLAS_EXIT
+if errorlevel 9 goto ATLAS_WATCH
+if errorlevel 8 goto ATLAS_ONCE
+if errorlevel 7 goto ATLAS_CAPTURE
+if errorlevel 6 goto ATLAS_REGISTER
 if errorlevel 5 goto ATLAS_CREATE
 if errorlevel 4 goto ATLAS_DB_CHECK
 if errorlevel 3 goto ATLAS_COM
@@ -52,6 +54,10 @@ goto ATLAS_MENU
 :ATLAS_CREATE
 echo 注意：新DBの初回作成です。既存DBは上書きしません。
 call "%~dp0ATLAS-DB-CREATE.cmd"
+goto ATLAS_MENU
+
+:ATLAS_REGISTER
+call "%~dp0ATLAS-JRA-REGISTER.cmd"
 goto ATLAS_MENU
 
 :ATLAS_CAPTURE
