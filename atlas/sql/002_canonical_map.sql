@@ -10,6 +10,11 @@ BEGIN
 END
 $atlas_db_guard$;
 CREATE SCHEMA IF NOT EXISTS atlas;
+-- Speed up the authoritative latest-decision check for historical RAW imports.
+-- The initial 001 schema already defines append-only ingest_decision.
+CREATE INDEX IF NOT EXISTS ix_atlas_ingest_decision_object_latest
+  ON atlas.ingest_decision(object_id, decision_id DESC);
+
 CREATE TABLE IF NOT EXISTS atlas.canonicalization_batch (
   object_id bigint PRIMARY KEY REFERENCES atlas.import_object(object_id),
   mapping_version text NOT NULL CHECK (length(mapping_version) > 0),
