@@ -1,0 +1,157 @@
+name: atlas-jvdata-map-003
+
+on:
+  pull_request:
+    paths:
+      - "tools/atlas_jvdata_map.py"
+      - "tests/test_atlas_jvdata_map.py"
+      - "tests/test_atlas_jra_daily.py"
+      - "tools/atlas_jra_daily.py"
+      - "tools/atlas_doctor.py"
+      - "tools/atlas_offline_selftest.py"
+      - "tests/test_atlas_offline_selftest.py"
+      - "tools/ATLAS-JRA-COM-CHECK.cmd"
+      - "tools/ATLAS-OFFLINE-SELFTEST.cmd"
+      - "tools/atlas_db_setup.py"
+      - "tools/atlas_jra_register.py"
+      - "tests/test_atlas_jra_register.py"
+      - "tools/ATLAS-JRA-REGISTER.cmd"
+      - "tools/ATLAS-MENU.cmd"
+      - "tests/test_atlas_db_setup.py"
+      - "tools/ATLAS-DB-*.cmd"
+      - "tests/test_atlas_doctor.py"
+      - "tools/ATLAS-DOCTOR.cmd"
+      - "tools/ATLAS-JRA-UPDATE*.cmd"
+      - "atlas/sql/002_canonical_map.sql"
+      - ".github/workflows/atlas-jvdata-map-003.yml"
+      - "docs/ATLAS_JVDATA_MAP_003.md"
+      - "atlas/sql/001_init.sql"
+  push:
+    branches: [main]
+    paths:
+      - "tools/atlas_jvdata_map.py"
+      - "tests/test_atlas_jvdata_map.py"
+      - "tests/test_atlas_jra_daily.py"
+      - "tools/atlas_jra_daily.py"
+      - "tools/atlas_doctor.py"
+      - "tools/atlas_offline_selftest.py"
+      - "tests/test_atlas_offline_selftest.py"
+      - "tools/ATLAS-JRA-COM-CHECK.cmd"
+      - "tools/ATLAS-OFFLINE-SELFTEST.cmd"
+      - "tools/atlas_db_setup.py"
+      - "tools/atlas_jra_register.py"
+      - "tests/test_atlas_jra_register.py"
+      - "tools/ATLAS-JRA-REGISTER.cmd"
+      - "tools/ATLAS-MENU.cmd"
+      - "tests/test_atlas_db_setup.py"
+      - "tools/ATLAS-DB-*.cmd"
+      - "tests/test_atlas_doctor.py"
+      - ".github/workflows/atlas-jvdata-map-003.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  official-layout-synthetic:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+        py: ["3.13", "3.14"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v6
+        with:
+          python-version: ${{ matrix.py }}
+      - name: Syntax check
+        run: python -m py_compile tools/atlas_jvdata_map.py tools/atlas_jra_daily.py tools/atlas_doctor.py tools/atlas_db_setup.py tools/atlas_jra_register.py tools/atlas_offline_selftest.py tests/test_atlas_offline_selftest.py tests/test_atlas_jra_register.py tests/test_atlas_jvdata_map.py tests/test_atlas_jra_daily.py tests/test_atlas_doctor.py tests/test_atlas_db_setup.py
+      - name: Synthetic RA/SE data layout contract tests
+        run: python -m unittest discover -s tests -p "test_atlas_jvdata_map.py" -v
+      - name: Synthetic full JRA acquisition-to-DB orchestration
+        run: python -m unittest discover -s tests -p "test_atlas_jra_daily.py" -v
+      - name: Non-invasive one-click environment diagnosis
+        run: python -m unittest discover -s tests -p "test_atlas_doctor.py" -v
+      - name: Database bootstrap dry-run safety contracts
+        run: python -m unittest discover -s tests -p "test_atlas_db_setup.py" -v
+      - name: Standalone offline test runner safety contracts
+        run: python -m unittest discover -s tests -p "test_atlas_offline_selftest.py" -v
+      - name: JRA-only registration rights safety tests
+        run: python -m unittest discover -s tests -p "test_atlas_jra_register.py" -v
+
+  canonical-postgres:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:18
+        env:
+          POSTGRES_USER: atlas_ci
+          POSTGRES_PASSWORD: atlas_ci_synthetic
+          POSTGRES_DB: neo_jizo_atlas
+        ports: [5432:5432]
+        options: >-
+          --health-cmd "pg_isready -U atlas_ci -d neo_jizo_atlas"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 8
+    env:
+      PGHOST: 127.0.0.1
+      PGPORT: "5432"
+      PGDATABASE: neo_jizo_atlas
+      PGUSER: atlas_ci
+      PGPASSWORD: atlas_ci_synthetic
+      ATLAS_PG_DSN: postgresql://atlas_ci:atlas_ci_synthetic@127.0.0.1:5432/neo_jizo_atlas
+      ATLAS_TEST_POSTGRES: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.14"
+      - name: Approved pinned PG driver only
+        run: python -m pip install "psycopg[binary]==3.3.2"
+      - name: PostgreSQL client
+        shell: bash
+        run: |
+          if ! command -v psql >/dev/null; then
+            sudo apt-get update -qq
+            sudo apt-get install -y -qq postgresql-client
+          fi
+      - name: New isolated DB schema and canonical mapping receipts
+        shell: bash
+        run: |
+          psql -X -v ON_ERROR_STOP=1 -f atlas/sql/001_init.sql
+          psql -X -v ON_ERROR_STOP=1 -f atlas/sql/002_canonical_map.sql
+          psql -X -v ON_ERROR_STOP=1 -f atlas/sql/002_canonical_map.sql
+      - name: Synthetic raw receiver to canonical observation integration
+        run: python -m unittest discover -s tests -p "test_atlas_jvdata_map.py" -v
+      - name: JRA-only source registry integration (ephemeral PG only)
+        run: python -m unittest discover -s tests -p "test_atlas_jra_register.py" -v
+
+  safe-new-db-bootstrap:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:18
+        env:
+          POSTGRES_USER: atlas_ci
+          POSTGRES_PASSWORD: atlas_ci_synthetic
+          POSTGRES_DB: postgres
+        ports: [5432:5432]
+        options: >-
+          --health-cmd "pg_isready -U atlas_ci -d postgres"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 8
+    env:
+      ATLAS_PG_ADMIN_DSN: postgresql://atlas_ci:atlas_ci_synthetic@127.0.0.1:5432/postgres
+      ATLAS_PG_DSN: postgresql://atlas_ci:atlas_ci_synthetic@127.0.0.1:5432/neo_jizo_atlas
+      ATLAS_TEST_BOOTSTRAP: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.14"
+      - name: Install optional local PostgreSQL driver
+        run: python -m pip install "psycopg[binary]==3.3.2"
+      - name: Prove new DB creation, repeat no-op and maintenance DB unchanged
+        run: python -m unittest discover -s tests -p "test_atlas_db_setup.py" -v

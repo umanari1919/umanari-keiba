@@ -26,6 +26,9 @@ import atlas_inbox as inbox
 DATA_SPEC = "RACE"
 FROM_RE = re.compile(r"^[0-9]{14}$")
 CHUNK_MAX_BYTES = 32 * 1024 * 1024
+# Must remain below atlas_jvdata_map.MAX_BATCH_ROWS (currently 20,000).
+# SE rows can fill 32 MiB with >20k records, so byte size alone is unsafe.
+CHUNK_MAX_RECORDS = 10_000
 RECORD_LIMIT = 150_000
 MAX_RECORD_BYTES = 150_000
 JV_GETS_BUFFER = 150_000
@@ -188,10 +191,11 @@ def _spool(client: Any, temp: Path, *, max_idle: int,
     overall_sha = hashlib.sha256()
     idle_since = monotonic()
     current_size = 0
+    current_rows = 0
     next_number = 0
 
     def new_part():
-        nonlocal active, current_size, next_number
+        nonlocal active, current_size, current_rows, next_number
         if active:
             active.flush()
             os.fsync(active.fileno())
@@ -201,6 +205,7 @@ def _spool(client: Any, temp: Path, *, max_idle: int,
         active = name.open("xb")
         paths.append(name)
         current_size = 0
+        current_rows = 0
 
     try:
         while True:
@@ -209,12 +214,14 @@ def _spool(client: Any, temp: Path, *, max_idle: int,
             if rc == 0:
                 break
             if rc in (-1, -3):
-                if rc == -3:
-                    if monotonic() - idle_since >= max_idle:
-                        raise CaptureBlocked("JVGETS_DOWNLOAD_TIMEOUT")
-                    sleep(1.0)
-                else:
-                    idle_since = monotonic()
+                # A file-switch (-1) isn't progress. Repeated -1 previously
+                # reset the timer and could spin forever without reading data.
+                if monotonic() - idle_since >= max_idle:
+                    raise CaptureBlocked(
+                        "JVGETS_DOWNLOAD_TIMEOUT" if rc == -3
+                        else "JVGETS_FILE_SWITCH_TIMEOUT"
+                    )
+                sleep(1.0 if rc == -3 else 0.1)
                 continue
             if rc < 0:
                 raise CaptureBlocked("JVGETS_FAILED")
@@ -222,10 +229,12 @@ def _spool(client: Any, temp: Path, *, max_idle: int,
             if records >= RECORD_LIMIT:
                 raise CaptureBlocked("JVGETS_RECORD_LIMIT")
             line = _make_line(records + 1, payload)
-            if active is None or current_size + len(line) > CHUNK_MAX_BYTES:
+            if (active is None or current_size + len(line) > CHUNK_MAX_BYTES
+                    or current_rows >= CHUNK_MAX_RECORDS):
                 new_part()
             active.write(line)
             current_size += len(line)
+            current_rows += 1
             overall_sha.update(payload)
             records += 1
         if active:
