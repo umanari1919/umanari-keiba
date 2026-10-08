@@ -38,6 +38,17 @@
 - [SDK最新版](https://developer.jra-van.jp/t/topic/45) 5.0.0（2026/8/4）のJV-Data構造体/Python 3.14版と実機でクロス検証するまでは、解析器の正式性を確定しない。
 - [公式レッスン：JV-Data内容の読み出し](https://developer.jra-van.jp/t/topic/605)：独自の文字分割ではなくSDKの構造体との照合を推奨する。構造体はSDKからユーザーのWindows端末上でのみ取得し、GitHubへ転載しない。
 
+## 実機導入の前には「ATLAS-DOCTOR」を先に実行
+
+**`tools/ATLAS-DOCTOR.cmd`をダブルクリック**。読み取り専用でWindows/Python 64bit・pywin32・PostgreSQLドライバー・新DBの対象名と必須テーブル・JRA許可設定・空き容量・取得カーソルをチェックし、日本語で`PASS/BLOCKED/ACTION_REQUIRED`を表示する。既存DB/原本を変更せず、SDKのJVInit/JVOpenも呼ばない。
+
+公式開発者コミュニティには、JV-Link公式検証ツールでは成功しても**Python 3.14/3.13から`JVOpen`または`JVRTOpen`で`-413`となる事例**が2026年9～10月に報告されている。これは全環境での再現ではなく、単一原因が確定したものでもない。**CIの模擬成功から実通信の成功を保証しない**こと。公式の開発者コミュニティ・SDKログで検証し、サービスキーをチャットやGitHubへ載せないこと。
+参考: https://developer.jra-van.jp/t/topic/1081
+
+### 多分割のトランザクション境界
+
+JV-Link `RACE`が複数のJSONLファイルへ分割された場合、**全チャンクのサイズ・SHA256・レコード構造の検証と原本保全を先に完了**し、その一連を**1つのPostgreSQLトランザクション**で記録する。途中の一件が失敗すれば、DBの全チャンク登録をロールバックし、次回の再処理に残す。単に受信済みマニフェストがあるだけでは不十分なため、独立CIで「2個目のDB書込失敗→1個目も残らない」を検証する。
+
 ## 日常の簡単な操作（PC実機SDK検証・事前設定後）
 
 - **一括更新**：初回JRA取得が完了した後、`tools/ATLAS-JRA-UPDATE.cmd` のダブルクリック1回で「JV-Link差分受信 → JRA専用INBOX投入 → RA/SEを新DBへ登録」を順序通り実施。取り込み前に、新DBへの接続と許諾を検査する。
