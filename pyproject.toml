@@ -29,6 +29,10 @@ mlops = [
 ingest = [
   "psycopg[binary]==3.3.2",
 ]
+# Windows-only SDK 5.0.0 JV-Link COM support. No automatic SDK installation.
+jvlink = [
+  "pywin32==312; sys_platform == 'win32'",
+]
 dev = [
   "ruff==0.16.8",
   "pytest==9.1.0",
