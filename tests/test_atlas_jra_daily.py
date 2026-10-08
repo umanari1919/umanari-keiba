@@ -51,8 +51,8 @@ class JraUpdateTests(unittest.TestCase):
             stages.append("capture")
             return {"status": "CAPTURED_RAW_IN_INBOX", "records": 25}
 
-        def receive(root, *, commit):
-            stages.append(("inbox", commit))
+        def receive(root, *, commit, organizers):
+            stages.append(("inbox", commit, organizers))
             return {"blocked": 0, "imported": 2, "duplicates": 3}
 
         def mapit(source_code, *, apply, limit):
@@ -62,7 +62,7 @@ class JraUpdateTests(unittest.TestCase):
         report = daily.cycle(self.root, capture_fn=capture, import_fn=receive,
                              map_fn=mapit, db_fn=db)
         self.assertEqual(stages, [
-            "db-check", "capture", ("inbox", True), ("map", self.code, True, 10)
+            "db-check", "capture", ("inbox", True, ("JRA",)), ("map", self.code, True, 10)
         ])
         self.assertTrue(con.closed)
         self.assertEqual(report["mapped_objects"], 2)
@@ -88,7 +88,7 @@ class JraUpdateTests(unittest.TestCase):
             daily.cycle(self.root, capture_fn=lambda r: self.fail("should not connect"))
 
     def test_blocked_file_never_runs_canonical_mapper(self):
-        def received(root, *, commit):
+        def received(root, *, commit, organizers):
             return {"blocked": 1, "imported": 0, "duplicates": 0}
         with self.assertRaisesRegex(daily.PipelineBlocked, "INBOX_HAS_BLOCKED_FILES"):
             daily.cycle(
@@ -105,7 +105,7 @@ class JraUpdateTests(unittest.TestCase):
                     "withheld": 0, "objects": 10 if len(calls) == 1 else 3}
         report = daily.cycle(
             self.root, capture_fn=lambda r: {"status": "NO_NEW_JRA_DATA", "records": 0},
-            import_fn=lambda r, *, commit: {"blocked": 0, "imported": 0, "duplicates": 1},
+            import_fn=lambda r, *, commit, organizers: {"blocked": 0, "imported": 0, "duplicates": 1},
             map_fn=mapit, db_fn=FakeCon,
         )
         self.assertEqual(report["mapped_objects"], 13)
