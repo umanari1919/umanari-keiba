@@ -191,7 +191,11 @@ def pending_objects(con, source_id: int, limit: int):
             "     WHERE d.object_id=o.object_id "
             "     ORDER BY d.decision_id DESC LIMIT 1)='VALIDATED' "
             "AND NOT EXISTS(SELECT 1 FROM atlas.canonicalization_batch b WHERE b.object_id=o.object_id) "
-            "ORDER BY o.object_id LIMIT %s",
+            "ORDER BY CASE WHEN EXISTS ("
+            "  SELECT 1 FROM atlas.raw_observation r "
+            "  WHERE r.object_id=o.object_id AND r.native_kind='JVDATA' "
+            "    AND r.raw_payload->>'record_spec'='RA'"
+            ") THEN 0 ELSE 1 END, o.object_id LIMIT %s",
             (source_id, limit),
         ).fetchall()
     ]
