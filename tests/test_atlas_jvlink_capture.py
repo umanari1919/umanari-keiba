@@ -24,11 +24,12 @@ class FakeJVLink:
         self.init = init
         self.opened = opened or (0, 1, 0, "20261008150000")
         self.close_rc = close
+        self.init_sid = None
         self.close_calls = 0
         self.open_calls = []
 
     def JVInit(self, name):
-        assert name.startswith("NEO-JIZO-ATLAS/")
+        self.init_sid = name
         return self.init
 
     def JVOpen(self, *args):
@@ -67,12 +68,50 @@ class CaptureTests(unittest.TestCase):
     def fake(self, data):
         return lambda: (data, lambda: None)
 
+    def test_registered_software_sid_from_local_env_never_reported(self):
+        sdk = FakeJVLink([b"RAabc"])
+        official = "SA123456/SD123456/ATLAS/Ver.0.2"
+        with patch.dict(os.environ, {"ATLAS_JVLINK_SID": official}):
+            result = jv.capture(
+                self.root, first_from="20261007000000", com_factory=self.fake(sdk)
+            )
+        self.assertEqual(sdk.init_sid, official)
+        self.assertNotIn(official, str(result))
+        self.assertNotIn(official, str((self.root / "receipts" / "jra_jvlink_cursor.json").read_text()))
+
+    def test_invalid_sid_fails_before_com_construction(self):
+        for value in ("", " INVALID", "Z" * 65, "NAME\nINJECTION"):
+            called = []
+            with patch.dict(os.environ, {"ATLAS_JVLINK_SID": value}):
+                with self.assertRaisesRegex(jv.CaptureBlocked, "JV_SID_INVALID"):
+                    jv.capture(
+                        self.root, first_from="20261007000000",
+                        com_factory=lambda: called.append(1),
+                    )
+            self.assertEqual(called, [])
+
+    def test_vendor_return_codes_preserved_without_secret_content(self):
+        sdk_init = FakeJVLink(init=-101)
+        with self.assertRaisesRegex(jv.CaptureBlocked, "JVINIT_ERROR_101"):
+            jv.capture(
+                self.root, first_from="20261007000000",
+                com_factory=self.fake(sdk_init),
+            )
+        sdk_open = FakeJVLink(opened=(-413, 0, 0, ""))
+        with self.assertRaisesRegex(jv.CaptureBlocked, "JVOPEN_ERROR_413"):
+            jv.capture(
+                self.root, first_from="20261007000000",
+                com_factory=self.fake(sdk_open),
+            )
+        self.assertFalse((self.root / "receipts" / "jra_jvlink_cursor.json").exists())
+
     def test_normal_delta_and_raw_exactness_and_cursor(self):
         data = FakeJVLink([b"RA" + bytes([0x82, 0xa0]) + b"\r\n", -1, b"SE" + b"\x00DATA"])
         report = jv.capture(self.root, first_from="20261007000000", com_factory=self.fake(data))
         self.assertEqual(report["status"], "CAPTURED_RAW_IN_INBOX")
         self.assertEqual(report["records"], 2)
         self.assertEqual(data.close_calls, 1)
+        self.assertEqual(data.init_sid, "UNKNOWN")
         self.assertEqual(data.open_calls, [("RACE", "20261007000000", 1, 0, 0, "")])
         outputs = list((self.root / "inbox" / "JRA").glob("*.jsonl"))
         self.assertEqual(len(outputs), 1)
