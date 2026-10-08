@@ -13,8 +13,18 @@ import atlas_jra_daily as daily
 
 
 class FakeCon:
-    def __init__(self):
+    def __init__(self, source_approved=True):
         self.closed = False
+        self.source_approved = source_approved
+        self.queries = []
+
+    def execute(self, statement, params):
+        assert "FROM atlas.data_source" in statement
+        self.queries.append((statement, params))
+        return self
+
+    def fetchone(self):
+        return (42,) if self.source_approved else None
 
     def close(self):
         self.closed = True
@@ -65,6 +75,8 @@ class JraUpdateTests(unittest.TestCase):
             "db-check", "capture", ("inbox", True, ("JRA",)), ("map", self.code, True, 10)
         ])
         self.assertTrue(con.closed)
+        self.assertEqual(len(con.queries), 1)
+        self.assertEqual(con.queries[0][1], (self.code,))
         self.assertEqual(report["mapped_objects"], 2)
         self.assertEqual(report["withheld_results"], 1)
         self.assertFalse(report["production_prediction_approved"])
@@ -80,6 +92,21 @@ class JraUpdateTests(unittest.TestCase):
         with self.assertRaisesRegex(daily.PipelineBlocked, "WRONG_DATABASE"):
             daily.cycle(self.root, capture_fn=capture, db_fn=db)
         self.assertFalse(called)
+        self.assertFalse((self.root / ".jra_daily_update.lock").exists())
+
+    def test_revoked_database_source_blocks_vendor_network_before_capture(self):
+        """Source approved in local config but revoked in PostgreSQL: fail closed."""
+        db = FakeCon(source_approved=False)
+        requests = []
+        with self.assertRaisesRegex(daily.PipelineBlocked, "JRA_SOURCE_NOT_APPROVED"):
+            daily.cycle(
+                self.root, db_fn=lambda: db,
+                capture_fn=lambda _: requests.append("JVOpen"),
+            )
+        self.assertEqual(requests, [])
+        self.assertEqual(len(db.queries), 1)
+        self.assertEqual(db.queries[0][1], (self.code,))
+        self.assertTrue(db.closed)
         self.assertFalse((self.root / ".jra_daily_update.lock").exists())
 
     def test_initial_capture_must_exist_and_not_auto_backfill(self):
