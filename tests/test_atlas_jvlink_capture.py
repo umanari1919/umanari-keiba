@@ -233,6 +233,75 @@ class CaptureTests(unittest.TestCase):
 
 @unittest.skipUnless(os.environ.get("ATLAS_TEST_POSTGRES"), "Dedicated synthetic CI PostgreSQL only")
 class PgIntegration(CaptureTests):
+    def test_real_postgres_multichunk_batch_is_atomic_after_failure(self):
+        """A simulated DB error in the SECOND chunk must roll back the FIRST."""
+        from unittest.mock import patch
+
+        config = self.root / "sources.local.json"
+        auth = json.loads(config.read_text(encoding="utf-8"))
+        auth["JRA"]["source_code"] = "ATLAS_JRA_CI_BATCH_ATOMIC"
+        config.write_text(json.dumps(auth), encoding="utf-8")
+        inbox.enroll_sources(self.root)
+
+        sample = FakeJVLink([
+            b"RA" + b"x"*80,
+            b"SE" + b"y"*80,
+            b"HR" + b"z"*80,
+        ])
+        with patch.object(jv, "CHUNK_MAX_BYTES", 420):
+            receipt = jv.capture(
+                self.root, first_from="20261007000000",
+                com_factory=self.fake(sample),
+            )
+        self.assertGreaterEqual(receipt["chunks"], 2)
+        age = time.time() - 10
+        for file in (self.root / "inbox" / "JRA").glob("*.jsonl"):
+            os.utime(file, (age, age))
+
+        source_code = auth["JRA"]["source_code"]
+        with inbox.connect_db() as con:
+            source_id = con.execute(
+                "SELECT source_id FROM atlas.data_source WHERE source_code=%s",
+                (source_code,),
+            ).fetchone()[0]
+            before = con.execute(
+                "SELECT count(*) FROM atlas.raw_observation WHERE source_id=%s",
+                (source_id,),
+            ).fetchone()[0]
+
+        original = inbox._commit_records_tx
+        calls = [0]
+
+        def fail_second(*args, **kwargs):
+            calls[0] += 1
+            if calls[0] == 2:
+                raise inbox.ImportBlocked("SIMULATED_SECOND_CHUNK_DB_FAILURE")
+            return original(*args, **kwargs)
+
+        with patch.object(inbox, "_commit_records_tx", side_effect=fail_second):
+            failed = inbox.run_once(self.root, commit=True, organizers=("JRA",))
+        self.assertEqual(calls[0], 2)
+        self.assertEqual(failed["imported"], 0)
+        self.assertEqual(failed["blocked"], receipt["chunks"])
+        with inbox.connect_db() as con:
+            after = con.execute(
+                "SELECT count(*) FROM atlas.raw_observation WHERE source_id=%s",
+                (source_id,),
+            ).fetchone()[0]
+        self.assertEqual(before, after, "NO chunk may survive a failed batch")
+
+        passed = inbox.run_once(self.root, commit=True, organizers=("JRA",))
+        self.assertEqual(passed["imported"], receipt["chunks"])
+        self.assertEqual(passed["blocked"], 0)
+        retried = inbox.run_once(self.root, commit=True, organizers=("JRA",))
+        self.assertEqual(retried["duplicates"], receipt["chunks"])
+        with inbox.connect_db() as con:
+            rows = con.execute(
+                "SELECT count(*) FROM atlas.raw_observation WHERE source_id=%s",
+                (source_id,),
+            ).fetchone()[0]
+        self.assertEqual(rows-before, 3)
+
     def test_capture_approved_source_can_commit_and_dedup(self):
         inbox.enroll_sources(self.root)
         jv.capture(self.root, first_from="20261007000000",
