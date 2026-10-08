@@ -300,11 +300,12 @@ def _capture_locked(root: Path, *, first_from: str | None = None, max_idle: int 
     (root / "work").mkdir(parents=True, exist_ok=True)
     if shutil.disk_usage(root).free < inbox.MIN_FREE_BYTES + 2 * CHUNK_MAX_BYTES:
         raise CaptureBlocked("LOW_DISK_SPACE")
+    sid = local_software_id()  # validate before opening COM or network access
     com, dispose = (com_factory or create_com)()
     opened = False
     acquired = False
     try:
-        init_rc = com.JVInit(local_software_id())
+        init_rc = com.JVInit(sid)
         if init_rc != 0:
             api_error("JVINIT", init_rc)
         decoded = _decode_open(com.JVOpen(DATA_SPEC, from_time, 1, 0, 0, ""))
