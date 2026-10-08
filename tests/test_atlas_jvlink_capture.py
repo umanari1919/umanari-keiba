@@ -155,6 +155,41 @@ class CaptureTests(unittest.TestCase):
                        monotonic=lambda: next(ticks), sleep=lambda x: None)
         self.assertFalse((self.root / "receipts" / "jra_jvlink_cursor.json").exists())
 
+    def test_batch_manifest_is_required_before_import(self):
+        jv.capture(self.root, first_from="20261007000000",
+                   com_factory=self.fake(FakeJVLink([b"RAabc", b"SEdef"])))
+        candidate = next((self.root / "inbox" / "JRA").glob("*.jsonl"))
+        age = time.time() - 10
+        os.utime(candidate, (age, age))
+        good = inbox.run_once(self.root, commit=False)
+        self.assertEqual(good["validated_only"], 1)
+
+        manifest = next((self.root / "receipts" / "jra_jvlink_batches").glob("*.json"))
+        original = manifest.read_bytes()
+        manifest.unlink()
+        blocked = inbox.run_once(self.root, commit=False)
+        self.assertEqual(blocked["blocked"], 1)
+        self.assertEqual(blocked["events"][0]["reason"], "JV_BATCH_NOT_FINALIZED")
+        manifest.write_bytes(original)
+        recovered = inbox.run_once(self.root, commit=False)
+        self.assertEqual(recovered["validated_only"], 1)
+
+    def test_missing_chunk_in_batch_blocks_other_chunks(self):
+        data = FakeJVLink([b"RA" + b"x"*80, b"SE" + b"y"*80, b"HR" + b"z"*80])
+        with patch.object(jv, "CHUNK_MAX_BYTES", 420):
+            jv.capture(self.root, first_from="20261007000000",
+                       com_factory=self.fake(data))
+        outputs = sorted((self.root / "inbox" / "JRA").glob("*.jsonl"))
+        self.assertGreaterEqual(len(outputs), 2)
+        outputs[0].unlink()
+        age = time.time() - 10
+        for file in outputs[1:]:
+            os.utime(file, (age, age))
+        blocked = inbox.run_once(self.root, commit=False)
+        self.assertEqual(blocked["validated_only"], 0)
+        self.assertEqual(blocked["blocked"], len(outputs)-1)
+        self.assertEqual({e["reason"] for e in blocked["events"]}, {"JV_BATCH_NOT_FINALIZED"})
+
     def test_overlapping_capture_is_refused(self):
         (self.root / ".jra_jvlink_capture.lock").mkdir()
         with self.assertRaisesRegex(jv.CaptureBlocked, "CAPTURE_ALREADY_RUNNING"):
