@@ -13,8 +13,8 @@ JRA-VAN、NAR等の許諾済み取得アダプターが出力した規定形式�
 1. PR #61（専用DB初期構造）を安全審査して取り込み、**新規空DB `neo_jizo_atlas` のみに**マイグレーションを適用する。既存DBには適用しない。
 2. このPRのコードをローカルへ同期して `tools/ATLAS-INBOX-SETUP.cmd` をダブルクリックする。初期フォルダーは `ドキュメント/NEO-JIZO-ATLAS-DATA`。
 3. `sources.local.json` のJRA/NARそれぞれについて、実際の利用許諾とアダプターを**人間が確認した後だけ** `enabled:true`, `rights_status:"APPROVED_INTERNAL"` などを設定し、8文字以上の根拠識別子を `authorization_reference` に記録する。**許諾済みでない間は変更しない**。
-4. 新DBへの接続情報をOSのローカル環境変数 `ATLAS_PG_DSN` に安全に設定する（GitHubやチャットにパスワードを掲載しない）。`python tools/atlas_inbox.py --enroll` を**最初の登録時だけ**実行し、許諾承認済みの供給元を登録する。
-5. 日常的には `tools/ATLAS-INBOX-START.cmd` を起動。既定は**検査専用**。確実に新DB・権利・アダプターを確認した運用だけ、ローカル環境変数 `ATLAS_INBOX_COMMIT=1` を設定し、ダブルクリックで`--watch --commit`となる。
+4. 新DBへの接続情報をOSのローカル環境変数 `ATLAS_PG_DSN` に安全に設定する（GitHubやチャットにパスワードを掲載しない）。その後、**`tools/ATLAS-INBOX-ENROLL.cmd` を最初の登録時だけダブルクリック**し、許諾承認済みの供給元を登録する。
+5. 普段の動作確認は **`tools/ATLAS-INBOX-START.cmd` のダブルクリック**で検査専用モード。新DB・権利・アダプターを確認した後の実取り込みは **`tools/ATLAS-INBOX-IMPORT.cmd` をダブルクリック**する。実取込の起動ファイルは`ATLAS_PG_DSN`未設定なら終了する。常駐中は約60秒間隔でスキャン。
 
 まだ完全無人ではない。OSログイン時の自動起動・JRA/NAR取得アダプター・インストーラーは後続ミッションで実装し、ここでは誤接続・無断登録を優先的に防ぐ。
 
