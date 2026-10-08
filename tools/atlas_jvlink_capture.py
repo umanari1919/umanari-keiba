@@ -239,7 +239,7 @@ def _publish(root: Path, temp_files: list[Path], from_time: str):
         except OSError as exc:
             # Hardlinks avoid exposing a partial .jsonl file to inbox watcher.
             raise CaptureBlocked("PUBLISH_ATOMIC_LINK_FAILED") from exc
-        out.append(digest)
+        out.append({"filename": name, "sha256": digest, "bytes": dest.stat().st_size})
     return out
 
 
@@ -309,12 +309,35 @@ def _capture_locked(root: Path, *, first_from: str | None = None, max_idle: int 
             opened = False
             published = _publish(root, parts, from_time)
             acquired = True
-        # The checkpoint is written ONLY after all chunks have been published.
+        # ONE complete-batch manifest is made visible after every chunk has been published.
+        # Importer rejects all fragments unless the complete manifest is present.
+        manifest_folder = root / "receipts" / "jra_jvlink_batches"
+        if manifest_folder.is_symlink():
+            raise CaptureBlocked("MANIFEST_FOLDER_SYMLINK")
+        manifest_folder.mkdir(parents=True, exist_ok=True)
+        manifest_path = manifest_folder / f"jv_RACE_{from_time}_{digest[:16]}.json"
+        manifest = {
+            "format": "ATLAS_JVLINK_RAW_BATCH_V1",
+            "dataspec": DATA_SPEC,
+            "fromtime": from_time,
+            "lastfiletimestamp": next_time,
+            "raw_stream_sha256": digest,
+            "records": count,
+            "chunks": published,
+            "canonicalized": False,
+        }
+        if manifest_path.exists():
+            if manifest_path.is_symlink() or json.loads(manifest_path.read_text(encoding="utf-8")) != manifest:
+                raise CaptureBlocked("MANIFEST_CONFLICT")
+        else:
+            _write_json(manifest_path, manifest)
+        # The checkpoint is written ONLY after the batch manifest has been published.
         _write_json(root / "receipts" / "jra_jvlink_cursor.json", {
             "dataspec": DATA_SPEC, "lastfiletimestamp": next_time,
             "previous_cursor": prior, "completed_at": datetime.now(timezone.utc).isoformat(),
             "records": count, "chunks": len(published),
-            "raw_stream_sha256": digest, "chunk_sha256": published,
+            "raw_stream_sha256": digest, "chunk_sha256": [p["sha256"] for p in published],
+            "batch_manifest": manifest_path.name,
             "mode": "NORMAL_DELTA_ONLY", "canonicalized": False,
             "inbox_committed": False,
         })
