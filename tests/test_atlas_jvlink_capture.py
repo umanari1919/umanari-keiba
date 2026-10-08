@@ -76,6 +76,9 @@ class CaptureTests(unittest.TestCase):
         self.assertEqual(data.open_calls, [("RACE", "20261007000000", 1, 0, 0, "")])
         outputs = list((self.root / "inbox" / "JRA").glob("*.jsonl"))
         self.assertEqual(len(outputs), 1)
+        # The receiver intentionally waits 2 seconds after a new file is published.
+        age = time.time() - 10
+        os.utime(outputs[0], (age, age))
         digest, size, records = inbox.parse_file(outputs[0])
         self.assertEqual(len(records), 2)
         values = [json.loads(line) for line in outputs[0].read_bytes().splitlines()]
@@ -167,7 +170,10 @@ class CaptureTests(unittest.TestCase):
         self.assertGreaterEqual(report["chunks"], 2)
         outputs = list((self.root / "inbox" / "JRA").glob("*.jsonl"))
         self.assertEqual(len(outputs), report["chunks"])
-        self.assertEqual(sum(inbox.parse_file(p)[2].__len__() for p in outputs), 3)
+        age = time.time() - 10
+        for file in outputs:
+            os.utime(file, (age, age))
+        self.assertEqual(sum(len(inbox.parse_file(p)[2]) for p in outputs), 3)
         self.assertFalse(list((self.root / "work").rglob("*.part")))
 
     def test_crash_safe_publish_is_content_addressed(self):
@@ -196,6 +202,9 @@ class PgIntegration(CaptureTests):
         inbox.enroll_sources(self.root)
         jv.capture(self.root, first_from="20261007000000",
                    com_factory=self.fake(FakeJVLink([b"RAabc", b"SEdef"])))
+        age = time.time() - 10
+        for file in (self.root / "inbox" / "JRA").glob("*.jsonl"):
+            os.utime(file, (age, age))
         result = inbox.run_once(self.root, commit=True)
         self.assertEqual(result["imported"], 1)
         self.assertEqual(inbox.run_once(self.root, commit=True)["duplicates"], 1)
