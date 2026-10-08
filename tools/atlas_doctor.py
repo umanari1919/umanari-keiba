@@ -59,6 +59,17 @@ def report(root: Path, *, windows=None, bitness=None,
     else:
         add("PSYCOPG", "PASS", "psycopg利用可能")
 
+    try:
+        from atlas_jvlink_capture import local_software_id
+        sid = local_software_id()
+        if sid == "UNKNOWN":
+            add("JV_SOFTWARE_ID", "PASS", "個人開発用の公式UNKNOWNを使用します")
+        else:
+            add("JV_SOFTWARE_ID", "ACTION_REQUIRED",
+                "正式に登録されたソフトIDか確認してください（内容は表示しません）")
+    except Exception:
+        add("JV_SOFTWARE_ID", "BLOCKED", "不正なJVInitソフトID。外部SDKへ接続しません")
+
     if root.is_symlink() or (root / "inbox").is_symlink():
         add("DATA_DIRECTORY", "BLOCKED", "データフォルダーにシンボリックリンクがあります")
     elif not root.is_dir():
