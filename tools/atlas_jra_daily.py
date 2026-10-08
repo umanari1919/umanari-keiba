@@ -50,7 +50,7 @@ def cycle(root: Path, *, capture_fn=None, import_fn=None,
         incoming = (capture_fn or jv.capture)(root)
         if incoming.get("status") not in {"CAPTURED_RAW_IN_INBOX", "NO_NEW_JRA_DATA"}:
             raise PipelineBlocked("CAPTURE_STATUS_UNEXPECTED")
-        receipt = (import_fn or inbox.run_once)(root, commit=True)
+        receipt = (import_fn or inbox.run_once)(root, commit=True, organizers=("JRA",))
         if receipt["blocked"]:
             raise PipelineBlocked("INBOX_HAS_BLOCKED_FILES")
         mapped, withheld, scanned = 0, 0, 0
