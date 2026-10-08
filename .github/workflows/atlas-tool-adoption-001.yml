@@ -1,0 +1,39 @@
+name: atlas-tool-adoption-001
+
+on:
+  pull_request:
+    paths:
+      - "src/atlas_drift_monitor.py"
+      - "tests/test_atlas_drift_monitor.py"
+      - "pyproject.toml"
+      - "docs/ATLAS_TOOL_ADOPTION_001.md"
+      - ".github/workflows/atlas-tool-adoption-001.yml"
+  push:
+    branches: [main]
+    paths:
+      - "src/atlas_drift_monitor.py"
+      - "tests/test_atlas_drift_monitor.py"
+      - "pyproject.toml"
+
+permissions:
+  contents: read
+
+jobs:
+  river-adwin-contract:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+        python-version: ["3.13", "3.14"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v6
+        with:
+          python-version: ${{ matrix.python-version }}
+      - name: Install only the opted-in drift component
+        run: python -m pip install "river==0.26.1"
+      - name: Compile
+        run: python -m py_compile src/atlas_drift_monitor.py tests/test_atlas_drift_monitor.py
+      - name: Synthetic contracts including actual River ADWIN
+        run: python -m unittest discover -s tests -p "test_atlas_drift_monitor.py" -v
