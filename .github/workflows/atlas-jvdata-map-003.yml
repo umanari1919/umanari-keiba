@@ -13,6 +13,10 @@ on:
       - "tools/ATLAS-JRA-COM-CHECK.cmd"
       - "tools/ATLAS-OFFLINE-SELFTEST.cmd"
       - "tools/atlas_db_setup.py"
+      - "tools/atlas_jra_register.py"
+      - "tests/test_atlas_jra_register.py"
+      - "tools/ATLAS-JRA-REGISTER.cmd"
+      - "tools/ATLAS-MENU.cmd"
       - "tests/test_atlas_db_setup.py"
       - "tools/ATLAS-DB-*.cmd"
       - "tests/test_atlas_doctor.py"
@@ -35,6 +39,10 @@ on:
       - "tools/ATLAS-JRA-COM-CHECK.cmd"
       - "tools/ATLAS-OFFLINE-SELFTEST.cmd"
       - "tools/atlas_db_setup.py"
+      - "tools/atlas_jra_register.py"
+      - "tests/test_atlas_jra_register.py"
+      - "tools/ATLAS-JRA-REGISTER.cmd"
+      - "tools/ATLAS-MENU.cmd"
       - "tests/test_atlas_db_setup.py"
       - "tools/ATLAS-DB-*.cmd"
       - "tests/test_atlas_doctor.py"
@@ -57,7 +65,7 @@ jobs:
         with:
           python-version: ${{ matrix.py }}
       - name: Syntax check
-        run: python -m py_compile tools/atlas_jvdata_map.py tools/atlas_jra_daily.py tools/atlas_doctor.py tools/atlas_db_setup.py tools/atlas_offline_selftest.py tests/test_atlas_offline_selftest.py tests/test_atlas_jvdata_map.py tests/test_atlas_jra_daily.py tests/test_atlas_doctor.py tests/test_atlas_db_setup.py
+        run: python -m py_compile tools/atlas_jvdata_map.py tools/atlas_jra_daily.py tools/atlas_doctor.py tools/atlas_db_setup.py tools/atlas_jra_register.py tools/atlas_offline_selftest.py tests/test_atlas_offline_selftest.py tests/test_atlas_jra_register.py tests/test_atlas_jvdata_map.py tests/test_atlas_jra_daily.py tests/test_atlas_doctor.py tests/test_atlas_db_setup.py
       - name: Synthetic RA/SE data layout contract tests
         run: python -m unittest discover -s tests -p "test_atlas_jvdata_map.py" -v
       - name: Synthetic full JRA acquisition-to-DB orchestration
@@ -68,6 +76,8 @@ jobs:
         run: python -m unittest discover -s tests -p "test_atlas_db_setup.py" -v
       - name: Standalone offline test runner safety contracts
         run: python -m unittest discover -s tests -p "test_atlas_offline_selftest.py" -v
+      - name: JRA-only registration rights safety tests
+        run: python -m unittest discover -s tests -p "test_atlas_jra_register.py" -v
 
   canonical-postgres:
     runs-on: ubuntu-latest
@@ -114,6 +124,8 @@ jobs:
           psql -X -v ON_ERROR_STOP=1 -f atlas/sql/002_canonical_map.sql
       - name: Synthetic raw receiver to canonical observation integration
         run: python -m unittest discover -s tests -p "test_atlas_jvdata_map.py" -v
+      - name: JRA-only source registry integration (ephemeral PG only)
+        run: python -m unittest discover -s tests -p "test_atlas_jra_register.py" -v
 
   safe-new-db-bootstrap:
     runs-on: ubuntu-latest
