@@ -105,6 +105,37 @@ class CaptureTests(unittest.TestCase):
             )
         self.assertFalse((self.root / "receipts" / "jra_jvlink_cursor.json").exists())
 
+    def test_chunk_row_limit_never_exceeds_mapper_capacity(self):
+        # Compact SE-like records may exceed mapper's MAX_BATCH_ROWS long
+        # before they reach 32 MiB. Never publish an un-mappable raw object.
+        self.assertLess(jv.CHUNK_MAX_RECORDS, 20_000)
+        sample = [b"SE" + (f"{n:04d}".encode()) for n in range(5)]
+        with patch.object(jv, "CHUNK_MAX_RECORDS", 2):
+            report = jv.capture(
+                self.root, first_from="20261007000000",
+                com_factory=self.fake(FakeJVLink(sample)),
+            )
+        self.assertEqual(report["records"], 5)
+        self.assertEqual(report["chunks"], 3)
+        _, batches = inbox._ready_jv_batches(self.root)
+        self.assertEqual(len(batches), 1)
+        _, parts = batches[0]
+        self.assertEqual(len(parts), 3)
+        lengths = [len(inbox.parse_file(path, finalized_manifest=True)[2]) for path, _ in parts]
+        self.assertEqual(lengths, [2, 2, 1])
+        self.assertEqual(sum(lengths), 5)
+
+    def test_low_row_limit_preserves_one_transaction_import_boundary(self):
+        sample = [b"SE" + (f"{n:04d}".encode()) for n in range(5)]
+        with patch.object(jv, "CHUNK_MAX_RECORDS", 2):
+            report = jv.capture(
+                self.root, first_from="20261007000000",
+                com_factory=self.fake(FakeJVLink(sample)),
+            )
+        checked = inbox.run_once(self.root, commit=False, organizers=("JRA",))
+        self.assertEqual(checked["validated_only"], report["chunks"])
+        self.assertEqual(checked["blocked"], 0)
+
     def test_normal_delta_and_raw_exactness_and_cursor(self):
         data = FakeJVLink([b"RA" + bytes([0x82, 0xa0]) + b"\r\n", -1, b"SE" + b"\x00DATA"])
         report = jv.capture(self.root, first_from="20261007000000", com_factory=self.fake(data))
