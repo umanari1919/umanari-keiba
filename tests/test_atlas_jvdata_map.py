@@ -275,6 +275,65 @@ class DbMappingTests(unittest.TestCase):
         result = m.run(self.code, apply=True)
         self.assertEqual(result["mapped"], 1)
 
+    def test_rejected_after_validated_never_becomes_canonical(self):
+        """A historic VALIDATED event cannot override a newer REJECTED one."""
+        self.ingest([make("RA", "7"), make("SE", "7", finish="01")])
+        with inbox.connect_db() as con:
+            obj = con.execute(
+                "SELECT o.object_id, o.source_id "
+                "FROM atlas.import_object o JOIN atlas.data_source s "
+                "ON s.source_id=o.source_id WHERE s.source_code=%s",
+                (self.code,),
+            ).fetchone()
+            self.assertIsNotNone(obj)
+            object_id, source_id = obj
+            con.execute(
+                "INSERT INTO atlas.ingest_decision "
+                "(object_id,decision,validated_record_count,"
+                "quarantined_record_count,policy_version) "
+                "VALUES (%s,'REJECTED',0,1,'CI_LATEST_DECISION_REVOKED')",
+                (object_id,),
+            )
+        result = m.run(self.code, apply=True)
+        self.assertEqual(result["status"], "PASS")
+        self.assertEqual(result["objects"], 0)
+        self.assertEqual(result["mapped"], 0)
+        with inbox.connect_db() as con:
+            with self.assertRaisesRegex(
+                m.MappingBlocked, "LATEST_INGEST_DECISION_NOT_VALIDATED"
+            ):
+                m.apply_object(con, source_id, object_id, apply=True)
+            after = con.execute(
+                "SELECT count(*) FROM atlas.canonicalization_batch "
+                "WHERE object_id=%s", (object_id,),
+            ).fetchone()[0]
+            self.assertEqual(after, 0)
+            race_rows = con.execute(
+                "SELECT count(*) FROM atlas.race_observation WHERE object_id=%s",
+                (object_id,),
+            ).fetchone()[0]
+            self.assertEqual(race_rows, 0)
+
+    def test_quarantine_after_approval_also_blocks_mapping(self):
+        self.ingest([make("RA", "2")])
+        with inbox.connect_db() as con:
+            obj = con.execute(
+                "SELECT o.object_id FROM atlas.import_object o "
+                "JOIN atlas.data_source s ON s.source_id=o.source_id "
+                "WHERE s.source_code=%s",
+                (self.code,),
+            ).fetchone()[0]
+            con.execute(
+                "INSERT INTO atlas.ingest_decision "
+                "(object_id,decision,validated_record_count,"
+                "quarantined_record_count,policy_version) "
+                "VALUES (%s,'QUARANTINED',0,1,'CI_QUARANTINE_AFTER_APPROVAL')",
+                (obj,),
+            )
+        result = m.run(self.code, apply=True)
+        self.assertEqual(result["objects"], 0)
+        self.assertEqual(result["mapped"], 0)
+
     def test_invalid_record_rolls_back_whole_batch(self):
         self.ingest([make("RA", "2"), make("SE", "7", abnormal="0", finish="00")])
         outcome = m.run(self.code, apply=True)
