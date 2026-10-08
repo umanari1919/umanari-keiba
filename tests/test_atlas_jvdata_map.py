@@ -191,14 +191,39 @@ class DbMappingTests(unittest.TestCase):
         self.assertEqual(preview["objects"], 1)
         self.assertEqual(preview["mapped"], 0)
         with inbox.connect_db() as con:
-            self.assertEqual(con.execute("SELECT count(*) FROM atlas.race").fetchone()[0], 0)
+            count = con.execute(
+                "SELECT count(*) FROM atlas.race_observation ro "
+                "JOIN atlas.import_object io ON ro.object_id=io.object_id "
+                "JOIN atlas.data_source ds ON ds.source_id=io.source_id "
+                "WHERE ds.source_code=%s", (self.code,)
+            ).fetchone()[0]
+            self.assertEqual(count, 0)
 
         done = m.run(self.code, apply=True)
         self.assertEqual(done["mapped"], 1)
         self.assertEqual(done["withheld"], 1)
         with inbox.connect_db() as con:
+            src_id = con.execute(
+                "SELECT source_id FROM atlas.data_source WHERE source_code=%s",
+                (self.code,),
+            ).fetchone()[0]
             def count(table):
-                return con.execute(f"SELECT count(*) FROM atlas.{table}").fetchone()[0]
+                if table in ("race", "horse"):
+                    identifiers = "race_identifier" if table == "race" else "horse_identifier"
+                    return con.execute(
+                        f"SELECT count(*) FROM atlas.{identifiers} WHERE source_id=%s",
+                        (src_id,),
+                    ).fetchone()[0]
+                if table == "horse_identifier":
+                    return con.execute(
+                        "SELECT count(*) FROM atlas.horse_identifier WHERE source_id=%s",
+                        (src_id,),
+                    ).fetchone()[0]
+                return con.execute(
+                    f"SELECT count(*) FROM atlas.{table} a "
+                    "JOIN atlas.import_object io ON io.object_id=a.object_id "
+                    "WHERE io.source_id=%s", (src_id,),
+                ).fetchone()[0]
             self.assertEqual(count("race"), 1)
             self.assertEqual(count("horse"), 2)
             self.assertEqual(count("horse_identifier"), 2)
@@ -226,7 +251,11 @@ class DbMappingTests(unittest.TestCase):
         self.assertEqual(blocked["status"], "BLOCKED")
         self.assertEqual(blocked["reports"][0]["reason"], "RACE_HEADER_NOT_YET_AVAILABLE")
         with inbox.connect_db() as con:
-            self.assertEqual(con.execute("SELECT count(*) FROM atlas.horse").fetchone()[0], 0)
+            self.assertEqual(con.execute(
+                "SELECT count(*) FROM atlas.horse_identifier hi "
+                "JOIN atlas.data_source ds ON ds.source_id=hi.source_id "
+                "WHERE ds.source_code=%s", (self.code,),
+            ).fetchone()[0], 0)
         self.ingest([make("RA", "2")], name="race.jsonl")
         # The queue blocks first; later object can run in same scan.
         m.run(self.code, apply=True)
@@ -239,8 +268,17 @@ class DbMappingTests(unittest.TestCase):
         self.assertEqual(outcome["status"], "BLOCKED")
         self.assertEqual(outcome["reports"][0]["reason"], "NUMBER_FIELD_OUT_OF_RANGE")
         with inbox.connect_db() as con:
-            self.assertEqual(con.execute("SELECT count(*) FROM atlas.race").fetchone()[0], 0)
-            self.assertEqual(con.execute("SELECT count(*) FROM atlas.canonicalization_batch").fetchone()[0], 0)
+            self.assertEqual(con.execute(
+                "SELECT count(*) FROM atlas.race_identifier ri "
+                "JOIN atlas.data_source ds ON ds.source_id=ri.source_id "
+                "WHERE ds.source_code=%s", (self.code,),
+            ).fetchone()[0], 0)
+            self.assertEqual(con.execute(
+                "SELECT count(*) FROM atlas.canonicalization_batch cb "
+                "JOIN atlas.import_object io ON io.object_id=cb.object_id "
+                "JOIN atlas.data_source ds ON ds.source_id=io.source_id "
+                "WHERE ds.source_code=%s", (self.code,),
+            ).fetchone()[0], 0)
 
 
 if __name__ == "__main__":
