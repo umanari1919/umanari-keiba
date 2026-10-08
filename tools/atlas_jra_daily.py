@@ -57,6 +57,10 @@ def cycle(root: Path, *, capture_fn=None, import_fn=None,
             raise PipelineBlocked(exc.code) from exc
         except mapper.MappingBlocked as exc:
             raise PipelineBlocked(exc.reason) from exc
+        except Exception as exc:
+            # Database/driver exceptions may include connection secrets.
+            # Do not let them reach the operator console or retry the SDK.
+            raise PipelineBlocked("JRA_DB_SOURCE_PREFLIGHT_FAILED") from exc
         incoming = (capture_fn or jv.capture)(root)
         if incoming.get("status") not in {"CAPTURED_RAW_IN_INBOX", "NO_NEW_JRA_DATA"}:
             raise PipelineBlocked("CAPTURE_STATUS_UNEXPECTED")
