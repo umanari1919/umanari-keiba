@@ -187,13 +187,29 @@ def pending_objects(con, source_id: int, limit: int):
             "SELECT o.object_id FROM atlas.import_object o "
             "WHERE o.source_id=%s "
             "AND o.rights_status_at_ingest IN ('APPROVED_INTERNAL','APPROVED') "
-            "AND EXISTS(SELECT 1 FROM atlas.ingest_decision d "
-            "           WHERE d.object_id=o.object_id AND d.decision='VALIDATED') "
+            "AND (SELECT d.decision FROM atlas.ingest_decision d "
+            "     WHERE d.object_id=o.object_id "
+            "     ORDER BY d.decision_id DESC LIMIT 1)='VALIDATED' "
             "AND NOT EXISTS(SELECT 1 FROM atlas.canonicalization_batch b WHERE b.object_id=o.object_id) "
             "ORDER BY o.object_id LIMIT %s",
             (source_id, limit),
         ).fetchall()
     ]
+
+
+def assert_latest_raw_approval(con, source_id: int, object_id: int):
+    """Defense-in-depth: prevent a later rejection bypassing the pending queue."""
+    row = con.execute(
+        "SELECT o.rights_status_at_ingest, "
+        "  (SELECT d.decision FROM atlas.ingest_decision d "
+        "   WHERE d.object_id=o.object_id "
+        "   ORDER BY d.decision_id DESC LIMIT 1) "
+        "FROM atlas.import_object o "
+        "WHERE o.object_id=%s AND o.source_id=%s FOR SHARE",
+        (object_id, source_id),
+    ).fetchone()
+    if (not row or row[0] not in inbox.APPROVED or row[1] != "VALIDATED"):
+        raise MappingBlocked("LATEST_INGEST_DECISION_NOT_VALIDATED")
 
 
 def read_object(con, object_id: int):
@@ -275,6 +291,9 @@ def _horse(con, source_id: int, rec: dict):
 
 
 def apply_object(con, source_id: int, object_id: int, *, apply: bool):
+    # Re-check on every object, even if the queue was prepared earlier.
+    # No old VALIDATED event can override a newer QUARANTINED/REJECTED decision.
+    assert_latest_raw_approval(con, source_id, object_id)
     items = read_object(con, object_id)  # Validate the WHOLE input before ANY DB writes.
     active = [(ordinal, obj) for ordinal, obj in items if obj is not None]
     ignored = len(items) - len(active)
