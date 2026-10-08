@@ -4,24 +4,24 @@ chcp 65001 >nul 2>&1
 :ATLAS_MENU
 cls
 echo ============================================================
-echo       NEO JIZO ATLAS - Windows Control Menu
+echo       NEO JIZO ATLAS - データ取り込み操作メニュー
 echo ============================================================
 echo.
-echo   SAFE / NO DATABASE CHANGES
-echo   [1] Doctor : read-only environment checks
-echo   [2] Synthetic tests : no databases, keys or network
-echo   [3] JV-Link COM check : LOCAL ONLY, no JVInit/download
-echo   [4] New database readiness : read-only inspection
+echo   【安全確認】データベースの変更なし
+echo   [1] 環境診断（読み取り専用）
+echo   [2] 合成テスト（DB・通信・秘密情報なし）
+echo   [3] JV-Link COM確認（ローカル限定・取得なし）
+echo   [4] 新DBの準備状況を確認（変更なし）
 echo.
-echo   USER-APPROVED ACTIONS ONLY
-echo   [5] CREATE a missing isolated atlas database (requires CREATE)
-echo   [6] Initial JRA capture (licensed JV-Link, prompts for date)
-echo   [7] JRA receive + import + canonical mapping, one cycle
-echo   [8] JRA hourly update (keeps this window open)
+echo   【実行処理】権利・環境の承認後のみ
+echo   [5] 新しいATLAS専用DBを作成（CREATE入力が必要）
+echo   [6] JRA初回取得（許諾済みSDK・起点日時が必要）
+echo   [7] JRA取得からDB登録まで一括更新
+echo   [8] JRAを60分ごとに更新（画面を開いたまま）
 echo.
-echo   [Q] Close this menu
+echo   [Q] 終了
 echo.
-choice /C 12345678Q /N /M "Choose one option: "
+choice /C 12345678Q /N /M "操作を選んでください: "
 if errorlevel 9 goto ATLAS_EXIT
 if errorlevel 8 goto ATLAS_WATCH
 if errorlevel 7 goto ATLAS_ONCE
@@ -50,25 +50,25 @@ call "%~dp0ATLAS-DB-CHECK.cmd"
 goto ATLAS_MENU
 
 :ATLAS_CREATE
-echo WARNING: first-time DB creation, no existing database overwritten.
+echo 注意：新DBの初回作成です。既存DBは上書きしません。
 call "%~dp0ATLAS-DB-CREATE.cmd"
 goto ATLAS_MENU
 
 :ATLAS_CAPTURE
-echo WARNING: requires rights-approved JRA-VAN local SDK.
+echo 注意：JRA-VANの有効な契約と公式SDKが必要です。
 call "%~dp0ATLAS-JRA-CAPTURE.cmd"
 goto ATLAS_MENU
 
 :ATLAS_ONCE
-echo WARNING: connects to JRA-VAN and writes ONLY approved new ATLAS DB.
+echo 注意：JRA-VANへ接続し、許諾済みの新ATLAS DBを更新します。
 call "%~dp0ATLAS-JRA-UPDATE.cmd"
 goto ATLAS_MENU
 
 :ATLAS_WATCH
-echo WARNING: connects to JRA-VAN hourly until interrupted.
+echo 注意：停止するまで1時間ごとにJRA-VANへ接続します。
 call "%~dp0ATLAS-JRA-UPDATE-WATCH.cmd"
 goto ATLAS_MENU
 
 :ATLAS_EXIT
-echo Menu closed. No scheduled tasks or services were installed.
+echo 終了しました。タスク登録やサービスの変更はしていません。
 exit /b 0
