@@ -56,6 +56,19 @@ def envelope(data):
 
 
 class ParsingTests(unittest.TestCase):
+    def test_local_jra_mapping_source_requires_explicit_authorization(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            inbox.setup(root)
+            with self.assertRaisesRegex(m.MappingBlocked, "JRA_SOURCE_NOT_APPROVED"):
+                m.local_jra_source(root)
+            path = root / "sources.local.json"
+            cfg = json.loads(path.read_text(encoding="utf-8"))
+            cfg["JRA"].update({"enabled": True, "rights_status": "APPROVED_INTERNAL",
+                               "authorization_reference": "SYNTHETIC_LOCAL_TEST"})
+            path.write_text(json.dumps(cfg), encoding="utf-8")
+            self.assertEqual(m.local_jra_source(root), cfg["JRA"]["source_code"])
+
     def test_official_RA_layout_date_distance_and_venue(self):
         rec = m.parsed(envelope(make("RA")))
         self.assertEqual(rec["kind"], "RA")
