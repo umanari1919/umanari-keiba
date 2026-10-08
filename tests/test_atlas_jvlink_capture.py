@@ -309,7 +309,10 @@ class CaptureTests(unittest.TestCase):
         original = files[0][0].read_bytes()
         # Original remains same byte count, but the record contents differ.
         # Metadata and source SHA then require the strict byte-level path.
-        files[0][0].write_bytes(original.replace(b"RAabc", b"RAxyz"))
+        tampered = original.replace(b"UkFhYmM=", b"UkF4eXo=")
+        self.assertNotEqual(tampered, original)
+        self.assertEqual(len(tampered), len(original))
+        files[0][0].write_bytes(tampered)
         with patch.object(inbox, "_jv_verified_source_digests",
                           return_value={sha for _, sha in files}):
             blocked = inbox.run_once(self.root, commit=True, organizers=("JRA",))
