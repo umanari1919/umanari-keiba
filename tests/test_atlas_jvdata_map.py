@@ -270,10 +270,29 @@ class DbMappingTests(unittest.TestCase):
                 "WHERE ds.source_code=%s", (self.code,),
             ).fetchone()[0], 0)
         self.ingest([make("RA", "2")], name="race.jsonl")
-        # The queue blocks first; later object can run in same scan.
-        m.run(self.code, apply=True)
+        # The RA header must now be scheduled ahead of orphan SE,
+        # allowing both objects to become canonical in the same scan.
         result = m.run(self.code, apply=True)
-        self.assertEqual(result["mapped"], 1)
+        self.assertEqual(result["status"], "PASS")
+        self.assertEqual(result["mapped"], 2)
+        self.assertEqual(m.run(self.code, apply=True)["objects"], 0)
+
+    def test_ra_header_beyond_ten_se_chunks_never_starves(self):
+        """RA arrives after 12 SE-only objects; bounded limit still progresses."""
+        for n in range(1, 13):
+            self.ingest(
+                [make("SE", "2", horse=f"{2020000000+n:010d}", number=f"{n:02d}")],
+                name=f"se-{n:02d}.jsonl",
+            )
+        self.ingest([make("RA", "2")], name="ra-final.jsonl")
+        result = m.run(self.code, apply=True, limit=10)
+        self.assertEqual(result["status"], "PASS", result)
+        self.assertEqual(result["mapped"], 10)
+        self.assertEqual(result["objects"], 10)
+        second = m.run(self.code, apply=True, limit=10)
+        self.assertEqual(second["status"], "PASS", second)
+        self.assertEqual(second["mapped"], 3)
+        self.assertEqual(m.run(self.code, apply=True)["objects"], 0)
 
     def test_rejected_after_validated_never_becomes_canonical(self):
         """A historic VALIDATED event cannot override a newer REJECTED one."""
