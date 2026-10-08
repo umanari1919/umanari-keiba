@@ -376,12 +376,18 @@ def commit_jv_batch(root: Path, item: dict, entries: list):
 JV_FILE = re.compile(r"^jv_RACE_[0-9]{14}_[0-9]{6}_[0-9a-f]{16}[.]jsonl$")
 
 
-def _jv_verified_source_digests(item: dict):
-    """One DB check per scan, not one query per historical file.
+def _jv_verified_source_digests(item: dict, requested: set):
+    """Query only SHA-256 digests that this scan actually needs to check.
 
-    Cached receipts alone are NEVER authoritative: if a database is restored
-    without a committed batch, the missing SHA must be re-imported.
+    At most 512 requested SHA values per SQL round-trip; no unbounded
+    materialization of the entire 15-year archive's checksum registry.
+    A local advisory receipt cannot substitute for the DB's latest decision.
     """
+    if not isinstance(requested, set):
+        raise ImportBlocked("JV_REQUESTED_DIGESTS_INVALID")
+    for digest in requested:
+        if not isinstance(digest, str) or not re.fullmatch(r"[0-9a-f]{64}", digest):
+            raise ImportBlocked("JV_REQUESTED_DIGESTS_INVALID")
     try:
         with connect_db() as con:
             source = con.execute(
@@ -393,20 +399,24 @@ def _jv_verified_source_digests(item: dict):
                     or source[3] not in APPROVED
                     or source[3] != item.get("rights_status")):
                 raise ImportBlocked("SOURCE_NOT_REGISTERED_OR_REVOKED")
-            rows = con.execute(
-                "SELECT o.object_sha256 FROM atlas.import_object o "
-                "WHERE o.source_id=%s "
-                "AND (SELECT d.decision FROM atlas.ingest_decision d "
-                "     WHERE d.object_id=o.object_id "
-                "     ORDER BY d.decision_id DESC LIMIT 1)='VALIDATED'",
-                (source[0],),
-            ).fetchall()
-            return {row[0] for row in rows}
+            result = set()
+            selected = sorted(requested)
+            for offset in range(0, len(selected), 512):
+                batch = selected[offset:offset + 512]
+                rows = con.execute(
+                    "SELECT o.object_sha256 FROM atlas.import_object o "
+                    "WHERE o.source_id=%s AND o.object_sha256 = ANY(%s) "
+                    "AND (SELECT d.decision FROM atlas.ingest_decision d "
+                    "     WHERE d.object_id=o.object_id "
+                    "     ORDER BY d.decision_id DESC LIMIT 1)='VALIDATED'",
+                    (source[0], batch),
+                ).fetchall()
+                result.update(row[0] for row in rows)
+            return result
     except ImportBlocked:
         raise
     except Exception as exc:
         raise ImportBlocked("JV_DB_INDEX_UNAVAILABLE") from exc
-
 
 def _jv_done_receipt_path(root: Path, manifest_path: Path):
     parent = root / "receipts" / "jra_jvlink_done"
@@ -535,7 +545,11 @@ def run_once(root: Path, *, commit=False, organizers=None):
     known_jra = None
     if commit and "JRA" in selected and jv_batches and auth["JRA"]["enabled"]:
         try:
-            known_jra = _jv_verified_source_digests(auth["JRA"])
+            requested = {
+                digest for _, manifest_entries in jv_batches
+                for _, digest in manifest_entries
+            }
+            known_jra = _jv_verified_source_digests(auth["JRA"], requested)
         except ImportBlocked:
             # Fail closed: normal transactional import still checks rights
             # and connection. Never rely on local advisory receipts alone.
