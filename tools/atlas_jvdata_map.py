@@ -367,14 +367,33 @@ def run(source_code: str, *, apply: bool = False, limit: int = 3):
         raise MappingBlocked(exc.code) from exc
 
 
+def local_jra_source(root: Path) -> str:
+    inbox.setup(root)
+    try:
+        items = inbox.load_authorizations(root)
+    except inbox.ImportBlocked as exc:
+        raise MappingBlocked(exc.code) from exc
+    jra = items["JRA"]
+    if (jra["enabled"] is not True or jra["rights_status"] not in inbox.APPROVED
+            or jra["adapter_type"] != "JV_LINK"
+            or len(jra.get("authorization_reference", "").strip()) < 8):
+        raise MappingBlocked("JRA_SOURCE_NOT_APPROVED")
+    return jra["source_code"]
+
+
 def main(argv=None):
     p = argparse.ArgumentParser(description="ATLAS JRA JVData layout mapper; preview by default")
-    p.add_argument("--source-code", required=True)
+    g = p.add_mutually_exclusive_group(required=True)
+    g.add_argument("--source-code", help="Registered approved local source code")
+    g.add_argument("--local-jra", action="store_true", help="Use approved local JRA source settings")
+    p.add_argument("--root", type=Path,
+                   default=Path.home() / "Documents" / "NEO-JIZO-ATLAS-DATA")
     p.add_argument("--apply", action="store_true", help="Write into ONLY isolated neo_jizo_atlas")
     p.add_argument("--limit", type=int, default=3)
     args = p.parse_args(argv)
     try:
-        result = run(args.source_code, apply=args.apply, limit=args.limit)
+        code = local_jra_source(args.root) if args.local_jra else args.source_code
+        result = run(code, apply=args.apply, limit=args.limit)
     except MappingBlocked as exc:
         print(f"ATLASマッピング保留: {exc.reason}", file=sys.stderr)
         return 2
