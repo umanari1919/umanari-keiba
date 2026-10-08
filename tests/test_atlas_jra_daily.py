@@ -97,6 +97,46 @@ class JraUpdateTests(unittest.TestCase):
                 db_fn=FakeCon,
             )
 
+    def test_bad_jv_manifest_is_safely_reported_as_blocked(self):
+        """Reproduces a real uncaught inbox exception fixed in this mission."""
+        steps = []
+
+        def received(root, *, commit, organizers):
+            steps.append("inbox")
+            raise inbox.ImportBlocked("JV_MANIFEST_DUPLICATE_FILENAME")
+
+        with self.assertRaisesRegex(
+            daily.PipelineBlocked, "JV_MANIFEST_DUPLICATE_FILENAME"
+        ):
+            daily.cycle(
+                self.root,
+                capture_fn=lambda root: {
+                    "status": "NO_NEW_JRA_DATA", "records": 0
+                },
+                import_fn=received,
+                map_fn=lambda *a, **k: self.fail(
+                    "canonical mapping must not start after inbox failure"
+                ),
+                db_fn=FakeCon,
+            )
+        self.assertEqual(steps, ["inbox"])
+        self.assertFalse((self.root / ".jra_daily_update.lock").exists())
+        self.assertFalse((self.root / "receipts" / "jra_daily_latest.json").exists())
+
+    def test_invalid_storage_root_is_safely_reported_as_blocked(self):
+        from unittest.mock import patch
+        with patch.object(
+            inbox, "setup", side_effect=inbox.ImportBlocked("ROOT_OR_INBOX_SYMLINK")
+        ):
+            with self.assertRaisesRegex(
+                daily.PipelineBlocked, "ROOT_OR_INBOX_SYMLINK"
+            ):
+                daily.cycle(
+                    self.root,
+                    capture_fn=lambda root: self.fail("must never connect"),
+                )
+        self.assertFalse((self.root / ".jra_daily_update.lock").exists())
+
     def test_more_than_ten_objects_is_processed_in_bounded_passes(self):
         calls = []
         def mapit(code, *, apply, limit):
