@@ -374,13 +374,14 @@ JV_FILE = re.compile(r"^jv_RACE_[0-9]{14}_[0-9]{6}_[0-9a-f]{16}[.]jsonl$")
 
 
 def _ready_jv_batches(root: Path):
-    """Never admit *any* JV chunk before ALL chunks in its manifest are present."""
+    """Read complete publisher manifests. Any missing part blocks the WHOLE batch."""
     folder = root / "receipts" / "jra_jvlink_batches"
     if folder.is_symlink():
         raise ImportBlocked("JV_MANIFEST_DIR_SYMLINK")
     if not folder.exists():
-        return {}
+        return {}, []
     ready = {}
+    batches = []
     for manifest_path in sorted(folder.glob("jv_RACE_*.json")):
         if manifest_path.is_symlink() or manifest_path.stat().st_size > 1_000_000:
             raise ImportBlocked("JV_MANIFEST_UNSAFE")
@@ -401,28 +402,26 @@ def _ready_jv_batches(root: Path):
                         or not isinstance(digest, str) or not re.fullmatch(r"[0-9a-f]{64}", digest)
                         or type(size) is not int or not 0 < size <= MAX_FILE_BYTES):
                     raise ValueError("manifest chunk fields")
-                if name in verified:
-                    raise ValueError("duplicate file")
+                if name in verified or name in ready:
+                    raise ImportBlocked("JV_MANIFEST_DUPLICATE_FILENAME")
                 source = root / "inbox" / "JRA" / name
                 if source.is_symlink() or not source.is_file() or source.stat().st_size != size:
                     raise ValueError("chunk unavailable")
                 verified[name] = digest
-            for name, digest in verified.items():
-                if name in ready and ready[name] != digest:
-                    raise ImportBlocked("JV_MANIFEST_CONFLICT")
             ready.update(verified)
+            batches.append([(root / "inbox" / "JRA" / n, d) for n, d in verified.items()])
         except ImportBlocked:
             raise
         except (OSError, ValueError, TypeError, AttributeError):
-            # Incomplete or corrupt batch is not admitted. The file stays on disk.
+            # Missing or damaged manifests never mark a partial batch as complete.
             continue
-    return ready
+    return ready, batches
 
 
 def run_once(root: Path, *, commit=False, organizers=None):
     setup(root)
     auth = load_authorizations(root)
-    jv_ready = _ready_jv_batches(root)
+    jv_ready, jv_batches = _ready_jv_batches(root)
     if organizers is None:
         selected = sorted(SOURCE_CODES)
     else:
@@ -430,12 +429,48 @@ def run_once(root: Path, *, commit=False, organizers=None):
         if not selected or len(set(selected)) != len(selected) or any(x not in SOURCE_CODES for x in selected):
             raise ImportBlocked("SOURCE_SCOPE_INVALID")
     events = []
+    handled = set()
+    if "JRA" in selected:
+        for batch in jv_batches:
+            try:
+                item = auth["JRA"]
+                if (not item["enabled"] or item.get("rights_status") not in APPROVED
+                        or len(item.get("authorization_reference", "").strip()) < 8):
+                    raise ImportBlocked("JRA_SOURCE_NOT_APPROVED")
+                # Even a one-chunk manifest follows the exact same all-or-none protocol.
+                if commit:
+                    outcomes = commit_jv_batch(root, item, batch)
+                else:
+                    outcomes = []
+                    for path, expected in batch:
+                        digest, size, records = parse_file(path)
+                        if digest != expected:
+                            raise ImportBlocked("JV_CHUNK_HASH_MISMATCH")
+                        if any(row[1] != "JVDATA" for row in records):
+                            raise ImportBlocked("JV_CHUNK_KIND_MISMATCH")
+                        outcomes.append((path.name, digest, len(records), "VALIDATED_ONLY"))
+                for filename, digest, count, status in outcomes:
+                    events.append({
+                        "source": "JRA", "file_sha256": digest,
+                        "rows": count, "status": status,
+                    })
+            except ImportBlocked as exc:
+                events.extend({
+                    "source": "JRA", "file_sha256": None,
+                    "rows": 0, "status": "BLOCKED", "reason": exc.code,
+                } for _ in batch)
+            except Exception:
+                events.extend({
+                    "source": "JRA", "file_sha256": None,
+                    "rows": 0, "status": "BLOCKED", "reason": "JV_BATCH_TRANSACTION_FAILURE",
+                } for _ in batch)
+            handled.update(path.name for path, _ in batch)
     for organizer in selected:
         folder = root / "inbox" / organizer
         if folder.is_symlink():
             raise ImportBlocked("INBOX_SYMLINK")
         for path in sorted(folder.iterdir()):
-            if path.name.startswith(".") or path.name.endswith(".tmp"):
+            if path.name.startswith(".") or path.name.endswith(".tmp") or path.name in handled:
                 continue
             item = auth[organizer]
             event = {"source": organizer, "file_sha256": None, "rows": 0}
