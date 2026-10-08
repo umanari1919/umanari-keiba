@@ -8,7 +8,7 @@
 - 標準的な通常差分 `JVInit → JVOpen("RACE", fromtime, 1, ...) → JVGets → JVClose` を実装する。
 - JVOpenの最終ファイル時刻`lastfiletimestamp`を**読み取り成功後だけ**ローカルの`receipts/jra_jvlink_cursor.json`へ保存し、次回はその時刻から取得。
 - JVGetsのバイト列を**完全一致するbase64**として各行の`payload.raw_base64`に格納。取得時点でCP932を不完全にデコードしたり、レース日時・馬ID・着順を推測したりしない。
-- 全件の読み取りとJVCloseが成功してから、`work/.part`をローカル`inbox/JRA/*.jsonl`へ**原子的に公開**。中断や失敗ではカーソルは進まず、書込途中ファイルを公開しない。
+- 全件の読み取りとJVCloseが成功してから、`work/.part`をローカル`inbox/JRA/*.jsonl`へ**原子的に公開**。全分割公開後には`receipts/jra_jvlink_batches/`へ**完全受信マニフェスト**を書き込み、ATLAS-INBOX側では全分割が揃わない限りどの分割も登録しない。中断・失敗ではカーソルを進めない。
 - 同時二重起動は`.jra_jvlink_capture.lock`で拒否。異常終了でロックが残る場合は、停止を確認してから手動検査する（自動解除で重複実行しない）。
 - 新規ファイルは前ミッションATLAS-INBOX-001へ渡せる。**この段階のDB登録はJVDATA原本観測であり、正規化されたレース・出走馬・結果テーブルへの昇格ではない。**
 
